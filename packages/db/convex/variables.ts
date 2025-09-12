@@ -125,6 +125,7 @@ export const create = mutation({
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
       )
+      .filter((q) => q.eq(q.field("branch"), branch))
       .first();
 
     if (existing && existing.deletedAt === undefined) {
