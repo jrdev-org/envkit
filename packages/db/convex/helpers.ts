@@ -30,10 +30,10 @@ export async function hashSHA256Hex(data: string): Promise<string> {
 
 // Compute ETAG asynchronously
 export async function computeETag(
-  vars: Array<{ name: string; value: string; stage?: string }>
+  vars: Array<{ name: string; value: string }>
 ): Promise<string> {
   const sorted = vars
-    .map((v) => `${v.stage ?? ""}:${v.name}=${v.value}`)
+    .map((v) => `${v.name}=${v.value}`)
     .sort()
     .join("&");
 

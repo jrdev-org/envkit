@@ -110,9 +110,15 @@ const dbApi = {
     ),
   },
   projects: {
-    create: safeCall(async (name: string, teamId: Id<"teams">) => {
-      return await convex.mutation(api.projects.create, { name, teamId });
-    }),
+    create: safeCall(
+      async (name: string, stage: string, teamId: Id<"teams">) => {
+        return await convex.mutation(api.projects.create, {
+          name,
+          stage,
+          teamId,
+        });
+      }
+    ),
     list: safeCall(async (teamId: Id<"teams">) => {
       return await convex.query(api.projects.list, { teamId });
     }),
@@ -123,12 +129,14 @@ const dbApi = {
       async (
         userId: Id<"users">,
         teamId: Id<"teams">,
+        stage: string,
         projectId: Id<"projects">,
         newName: string
       ) => {
         return await convex.mutation(api.projects.rename, {
           userId,
           teamId,
+          stage,
           projectId,
           newName,
         });
@@ -167,14 +175,12 @@ const dbApi = {
         projectId: Id<"projects">,
         name: string,
         value: string,
-        stage: string,
         branch?: string
       ) => {
         return await convex.mutation(api.variables.create, {
           projectId,
           name,
           value,
-          stage,
           branch,
         });
       }
@@ -184,38 +190,21 @@ const dbApi = {
         projectId: Id<"projects">,
         name: string,
         value: string,
-        stage: string,
         branch?: string
       ) => {
         return await convex.mutation(api.variables.update, {
           projectId,
           name,
           value,
-          stage,
           branch,
         });
       }
     ),
     delete: safeCall(
-      async (
-        projectId: Id<"projects">,
-        name: string,
-        stage: string,
-        branch?: string
-      ) => {
+      async (projectId: Id<"projects">, name: string, branch?: string) => {
         return await convex.mutation(api.variables.deleteVariable, {
           projectId,
           name,
-          stage,
-          branch,
-        });
-      }
-    ),
-    getByStage: safeCall(
-      async (projectId: Id<"projects">, stage: string, branch?: string) => {
-        return await convex.query(api.variables.getByStage, {
-          projectId,
-          stage,
           branch,
         });
       }

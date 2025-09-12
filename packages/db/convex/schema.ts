@@ -58,26 +58,24 @@ export default defineSchema({
   // --- Projects ---
   projects: defineTable({
     name: v.string(),
+    stage: v.string(),
     teamId: v.id("teams"), // always owned by a team
     lastAction: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_team", ["teamId"])
-    .index("by_team_and_name", ["teamId", "name"]),
+    .index("by_team_and_name_and_stage", ["teamId", "name", "stage"]),
 
   variables: defineTable({
     projectId: v.id("projects"),
     name: v.string(),
     value: v.string(), // encrypted
-    stage: v.string(),
     branch: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
   })
     .index("by_project", ["projectId"])
-    .index("by_project_and_name", ["projectId", "name"])
-    .index("by_project_stage_and_name", ["projectId", "stage", "name"])
-    .index("by_stage_project", ["stage", "projectId"]),
+    .index("by_project_and_name", ["projectId", "name"]),
 
   projectSnapshots: defineTable({
     projectId: v.id("projects"),

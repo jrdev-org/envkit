@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
 
 export const create = mutation({
-  args: { name: v.string(), teamId: v.id("teams") },
+  args: { name: v.string(), stage: v.string(), teamId: v.id("teams") },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
     if (!team) {
@@ -10,11 +10,12 @@ export const create = mutation({
     }
 
     const name = args.name.trim();
+    const stage = args.stage.trim();
 
     const existing = await ctx.db
       .query("projects")
-      .withIndex("by_team_and_name", (q) =>
-        q.eq("teamId", team._id).eq("name", name)
+      .withIndex("by_team_and_name_and_stage", (q) =>
+        q.eq("teamId", team._id).eq("name", name).eq("stage", stage)
       )
       .first();
 
@@ -24,6 +25,7 @@ export const create = mutation({
 
     const newProjectId = await ctx.db.insert("projects", {
       name,
+      stage,
       teamId: team._id,
       lastAction: "created",
       updatedAt: Date.now(),
@@ -69,10 +71,11 @@ export const rename = mutation({
   args: {
     userId: v.id("users"),
     teamId: v.id("teams"),
+    stage: v.string(),
     projectId: v.id("projects"),
     newName: v.string(),
   },
-  handler: async (ctx, { userId, teamId, projectId, newName }) => {
+  handler: async (ctx, { userId, teamId, stage, projectId, newName }) => {
     // 1. Fetch project first
     const project = await ctx.db.get(projectId);
     if (!project || project.deletedAt) throw new Error("Project not found!");
@@ -97,10 +100,14 @@ export const rename = mutation({
     }
 
     const normalizedName = newName.trim();
+    const normalizedStage = stage.trim();
     const conflict = await ctx.db
       .query("projects")
-      .withIndex("by_team_and_name", (q) =>
-        q.eq("teamId", teamId).eq("name", normalizedName)
+      .withIndex("by_team_and_name_and_stage", (q) =>
+        q
+          .eq("teamId", teamId)
+          .eq("name", normalizedName)
+          .eq("stage", normalizedStage)
       )
       .first();
     if (

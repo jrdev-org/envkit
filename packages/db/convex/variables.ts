@@ -111,7 +111,6 @@ export const create = mutation({
     projectId: v.id("projects"),
     name: v.string(),
     value: v.string(),
-    stage: v.string(),
     branch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -119,25 +118,23 @@ export const create = mutation({
     if (!project) throw new Error("Project doesn't exist");
 
     const name = args.name.trim();
-    const stage = args.stage.trim();
     const branch = args.branch?.trim();
 
     const existing = await ctx.db
       .query("variables")
-      .withIndex("by_project_stage_and_name", (q) =>
-        q.eq("projectId", project._id).eq("stage", stage).eq("name", name)
+      .withIndex("by_project_and_name", (q) =>
+        q.eq("projectId", project._id).eq("name", name)
       )
       .first();
 
     if (existing && existing.deletedAt === undefined) {
-      throw new Error(`Variable "${name}" already exists in stage "${stage}"`);
+      throw new Error(`Variable "${name}" already exists`);
     }
 
     await ctx.db.insert("variables", {
       projectId: project._id,
       name,
       value: args.value, // assume already encrypted upstream per schema comment
-      stage,
       branch,
     });
 
@@ -157,7 +154,6 @@ export const update = mutation({
     projectId: v.id("projects"),
     name: v.string(),
     value: v.string(),
-    stage: v.string(),
     branch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -165,18 +161,17 @@ export const update = mutation({
     if (!project) throw new Error("Project doesn't exist");
 
     const name = args.name.trim();
-    const stage = args.stage.trim();
     const branch = args.branch?.trim();
 
     const existing = await ctx.db
       .query("variables")
-      .withIndex("by_project_stage_and_name", (q) =>
-        q.eq("projectId", project._id).eq("stage", stage).eq("name", name)
+      .withIndex("by_project_and_name", (q) =>
+        q.eq("projectId", project._id).eq("name", name)
       )
       .first();
 
     if (!existing || existing.deletedAt) {
-      throw new Error(`Variable "${name}" does not exist in stage "${stage}"`);
+      throw new Error(`Variable "${name}" does not exist`);
     }
 
     await ctx.db.patch(existing._id, {
@@ -199,7 +194,6 @@ export const deleteVariable = mutation({
   args: {
     projectId: v.id("projects"),
     name: v.string(),
-    stage: v.string(),
     branch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -207,13 +201,12 @@ export const deleteVariable = mutation({
     if (!project) throw new Error("Project doesn't exist");
 
     const name = args.name.trim();
-    const stage = args.stage.trim();
     const branch = args.branch?.trim();
 
     const existing = await ctx.db
       .query("variables")
-      .withIndex("by_project_stage_and_name", (q) =>
-        q.eq("projectId", project._id).eq("stage", stage).eq("name", name)
+      .withIndex("by_project_and_name", (q) =>
+        q.eq("projectId", project._id).eq("name", name)
       )
       .first();
 
@@ -230,32 +223,5 @@ export const deleteVariable = mutation({
     });
 
     return { deletedVar: existing, activeVars, snapshotId };
-  },
-});
-
-// Get variables by stage
-export const getByStage = query({
-  args: {
-    projectId: v.id("projects"),
-    stage: v.string(),
-    branch: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) throw new Error("Project doesn't exist");
-
-    const stage = args.stage.trim();
-    const branch = args.branch?.trim();
-
-    const vars = await ctx.db
-      .query("variables")
-      .withIndex("by_stage_project", (q) =>
-        q.eq("stage", stage).eq("projectId", project._id)
-      )
-      .collect();
-
-    return vars.filter(
-      (v) => v.deletedAt === undefined && (!branch || v.branch === branch)
-    );
   },
 });
