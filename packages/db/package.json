@@ -1,0 +1,26 @@
+{
+  "name": "@envkit/db",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "keywords": [
+    "convex",
+    "envkit"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@t3-oss/env-core": "^0.13.8",
+    "convex": "^1.27.0",
+    "dotenv": "^17.2.2",
+    "valibot": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1"
+  }
+}

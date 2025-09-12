@@ -1,6 +1,6 @@
 onlyBuiltDependencies:
   - esbuild
 
-workspaces:
+packages:
   - apps/*
   - packages/*

@@ -4,10 +4,16 @@
   "description": "Envkit is a secure environment variable management tool for modern teams. It allows you to store and manage environment variables in a secure and organized way, with built-in encryption and access control.",
   "type": "module",
   "scripts": {
-    "test": "vitest",
-    "start": "turbo run dev --parallel",
-    "build": "turbo run build",
-    "lint": "turbo run lint",
+    "dev:web": "pnpm --filter @nvkit/web dev",
+    "dev:cli": "pnpm --filter @envkit/cli dev",
+    "dev:db": "pnpm --filter @envkit/db dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "dev:all": "pnpm --parallel dev",
+    "test": "vitest run",
+    "test:web": "vitest run tests/web",
+    "test:cli": "vitest run tests/cli",
+    "test:db": "vitest run tests/db",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "keywords": [
