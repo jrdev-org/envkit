@@ -1,0 +1,6 @@
+onlyBuiltDependencies:
+  - esbuild
+
+workspaces:
+  - apps/*
+  - packages/*

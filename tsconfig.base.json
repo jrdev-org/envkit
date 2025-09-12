@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": false,
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@envkit/db": ["packages/db/index.ts"]
+    },
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true
+  }
+}
