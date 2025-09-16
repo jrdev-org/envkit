@@ -1,9 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
-import { tokenAndHash } from "./helpers.js";
 
 export const create = mutation({
-  args: { authId: v.string(), name: v.string(), email: v.string() },
+  args: {
+    authId: v.string(),
+    name: v.string(),
+    email: v.string(),
+    salt: v.string(),
+  },
   handler: async (ctx, args) => {
     const authId = args.authId.trim();
     const email = args.email.trim().toLowerCase();
@@ -13,6 +17,7 @@ export const create = mutation({
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", authId))
       .first();
+
     if (existingByAuth !== null) {
       throw new Error(`User already exists.`);
     }
@@ -22,33 +27,35 @@ export const create = mutation({
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", email))
       .first();
+
     if (existingByEmail !== null) {
       throw new Error(`User already exists.`);
     }
 
-    // 2) Generate a new salt
-    const { token: salt, tokenHash: teamSalt } = await tokenAndHash();
-
-    // 3) Create user
+    // 2) Create user
     const newUserId = await ctx.db.insert("users", {
       authId,
-      salt,
       tier: "free",
       name: args.name,
       email,
       updatedAt: Date.now(),
     });
 
-    // 4) Create user's team
+    // 3) Create user's team
     const newTeamId = await ctx.db.insert("teams", {
       name: `${args.name.trim()}'s Team`,
       ownerId: newUserId,
-      salt: teamSalt,
       lastAction: "created",
       state: "active",
       type: "personal",
       maxMembers: 2,
       updatedAt: Date.now(),
+    });
+
+    // 4) create team salt
+    await ctx.db.insert("salts", {
+      teamId: newTeamId,
+      salt: args.salt,
     });
 
     // 5 add user to team

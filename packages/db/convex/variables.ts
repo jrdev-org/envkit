@@ -105,12 +105,11 @@ export const getProjectAndVars = query({
 
 // ------------------ Mutations ------------------
 
-// Create variable
 export const create = mutation({
   args: {
     projectId: v.id("projects"),
     name: v.string(),
-    value: v.string(),
+    encryptedValue: v.string(),
     branch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -135,7 +134,7 @@ export const create = mutation({
     await ctx.db.insert("variables", {
       projectId: project._id,
       name,
-      value: args.value, // assume already encrypted upstream per schema comment
+      value: args.encryptedValue,
       branch,
     });
 

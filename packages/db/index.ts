@@ -9,6 +9,7 @@ export {
 } from "convex/react";
 import { ConvexHttpClient } from "convex/browser";
 import { env } from "./env.js";
+import { UserService } from "./convex/node.js";
 
 const convex = new ConvexHttpClient(env.CONVEX_URL);
 
@@ -47,11 +48,14 @@ const dbApi = {
       return await convex.query(api.users.get, { authId });
     }),
     create: safeCall(async (authId: string, name: string, email: string) => {
-      const { newUserId, newTeamId } = await convex.mutation(api.users.create, {
-        authId,
-        name,
-        email,
-      });
+      const { newUserId, newTeamId } = await convex.action(
+        api.node.createUser,
+        {
+          authId,
+          name,
+          email,
+        }
+      );
       return { newUserId, newTeamId };
     }),
     update: safeCall(async (id: Id<"users">, opts: Record<string, unknown>) => {
@@ -72,7 +76,7 @@ const dbApi = {
       return await convex.query(api.teams.getByName, { ownerId, name });
     }),
     create: safeCall(async (name: string, ownerId: Id<"users">) => {
-      return await convex.mutation(api.teams.create, { name, ownerId });
+      return await convex.action(api.node.createTeam, { name, ownerId });
     }),
     update: safeCall(async (id: Id<"teams">, name: string) => {
       return await convex.mutation(api.teams.update, { id, name });
@@ -177,7 +181,7 @@ const dbApi = {
         value: string,
         branch?: string
       ) => {
-        return await convex.mutation(api.variables.create, {
+        return await convex.action(api.node.createVariable, {
           projectId,
           name,
           value,
@@ -284,4 +288,4 @@ const dbApi = {
   },
 };
 
-export { type Id, api, dbApi, typeSafeCall };
+export { type Id, api, dbApi, typeSafeCall, UserService };

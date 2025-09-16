@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server.js";
+import { internalQuery, mutation, query } from "./_generated/server.js";
 
 export const create = mutation({
   args: { name: v.string(), stage: v.string(), teamId: v.id("teams") },
@@ -208,5 +208,26 @@ export const remove = mutation({
     }
 
     return { success: true, project };
+  },
+});
+
+// an internal query that fetches both project and team salt
+export const getProjectAndTeamSalt = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project) return { project: null, teamSalt: null };
+    const teamSalt = await ctx.db
+      .query("salts")
+      .filter((q) => q.eq(q.field("teamId"), project.teamId))
+      .first()
+      .then((row) => {
+        if (row === null) {
+          throw new Error("Team salt not found");
+        }
+        return row.salt;
+      });
+
+    return { project, teamSalt };
   },
 });

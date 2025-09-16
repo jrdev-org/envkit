@@ -1,9 +1,15 @@
-import * as crypto from "crypto";
+"use node";
 
-interface User {
+import { v } from "convex/values";
+import { action } from "./_generated/server.js";
+import type { Id } from "./_generated/dataModel.js";
+import { api } from "./_generated/api.js";
+import * as crypto from "node:crypto";
+
+type User = {
   id: string;
-  salt: string; // Store this securely in your database
-}
+  salt: string;
+};
 
 export class MessageEncryption {
   private static readonly ALGORITHM = "aes-256-gcm";
@@ -85,7 +91,6 @@ export class MessageEncryption {
   }
 }
 
-// Usage example
 export class UserService {
   private users: Map<string, User> = new Map();
 
@@ -134,36 +139,101 @@ export class UserService {
   }
 }
 
-// Example usage
-const userService = new UserService();
+// Actions that call the mutations
+export const createTeam = action({
+  args: { name: v.string(), ownerId: v.id("users") },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    _id: Id<"teams">;
+    _creationTime: number;
+    deletedAt?: number | undefined;
+    lastAction?: string | undefined;
+    maxMembers?: number | undefined;
+    name: string;
+    type: "personal" | "organization";
+    updatedAt: number;
+    ownerId: Id<"users">;
+    state: "active" | "deleted" | "suspended" | "full";
+  } | null> => {
+    // Generate salt in the action
+    const userService = new UserService();
+    const tempUser = userService.createUser("temp"); // We just need the salt
+    const salt = tempUser.salt;
 
-// Create users
-const user1 = userService.createUser("user123");
-const user2 = userService.createUser("user456");
+    // Call the mutation with the generated salt
+    return await ctx.runMutation(api.teams.create, {
+      name: args.name,
+      ownerId: args.ownerId,
+      salt: salt,
+    });
+  },
+});
 
-console.log("User 1 salt:", user1.salt);
-console.log("User 2 salt:", user2.salt);
+export const createUser = action({
+  args: { authId: v.string(), name: v.string(), email: v.string() },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    newUserId: Id<"users">;
+    newTeamId: Id<"teams">;
+  }> => {
+    // Generate salt in the action
+    const userService = new UserService();
+    const tempUser = userService.createUser("temp"); // We just need the salt
+    const salt = tempUser.salt;
 
-// Encrypt messages
-const message1 = "Hello, this is a secret message!";
-const message2 = "Another confidential message.";
+    // Call the mutation with the generated salt
+    return await ctx.runMutation(api.users.create, {
+      authId: args.authId,
+      name: args.name,
+      email: args.email.trim().toLowerCase(),
+      salt: salt,
+    });
+  },
+});
 
-const encrypted1 = userService.encryptUserMessage("user123", message1);
-const encrypted2 = userService.encryptUserMessage("user456", message2);
+export const createVariable = action({
+  args: {
+    projectId: v.id("projects"),
+    name: v.string(),
+    value: v.string(),
+    branch: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    activeVars: {
+      _id: Id<"variables">;
+      _creationTime: number;
+      deletedAt?: number | undefined;
+      branch?: string | undefined;
+      name: string;
+      projectId: Id<"projects">;
+      value: string;
+    }[];
+    snapshotId: Id<"projectSnapshots">;
+  }> => {
+    const { project, teamSalt } = await ctx.runQuery(
+      api.projects.getProjectAndTeamSalt,
+      {
+        projectId: args.projectId,
+      }
+    );
 
-console.log("\nEncrypted messages:");
-console.log("User 1:", encrypted1);
-console.log("User 2:", encrypted2);
+    if (!project) throw new Error("Project doesn't exist");
+    if (!teamSalt) throw new Error("Team salt not found");
 
-// Decrypt messages
-const decrypted1 = userService.decryptUserMessage("user123", encrypted1);
-const decrypted2 = userService.decryptUserMessage("user456", encrypted2);
+    const encrypted = MessageEncryption.encryptMessage(args.value, teamSalt);
 
-console.log("\nDecrypted messages:");
-console.log("User 1:", decrypted1);
-console.log("User 2:", decrypted2);
-
-// Verify original messages match
-console.log("\nVerification:");
-console.log("Message 1 matches:", message1 === decrypted1);
-console.log("Message 2 matches:", message2 === decrypted2);
+    return await ctx.runMutation(api.variables.create, {
+      projectId: args.projectId,
+      name: args.name,
+      encryptedValue: encrypted,
+      branch: args.branch,
+    });
+  },
+});

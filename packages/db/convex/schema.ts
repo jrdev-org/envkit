@@ -7,7 +7,6 @@ export default defineSchema({
     authId: v.string(), // from auth provider
     name: v.string(),
     email: v.string(),
-    salt: v.string(), // user-specific salt
     tier: v.union(v.literal("free"), v.literal("pro")),
     updatedAt: v.number(),
   })
@@ -27,7 +26,6 @@ export default defineSchema({
   teams: defineTable({
     name: v.string(),
     ownerId: v.id("users"),
-    salt: v.string(),
     lastAction: v.optional(v.string()),
     state: v.union(
       v.literal("active"),
@@ -42,6 +40,11 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerId"])
     .index("by_owner_and_name", ["ownerId", "name"]),
+
+  salts: defineTable({
+    teamId: v.id("teams"),
+    salt: v.string(),
+  }),
 
   teamMembers: defineTable({
     teamId: v.id("teams"),
