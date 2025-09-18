@@ -14,7 +14,8 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "postbuild": "cp -r convex dist/convex"
   },
   "keywords": [
     "convex",

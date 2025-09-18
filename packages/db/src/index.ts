@@ -1,14 +1,7 @@
-import { api } from "../convex/_generated/api.js";
-import { type Id } from "../convex/_generated/dataModel.js";
-export {
-  ConvexProvider,
-  ConvexReactClient,
-  useQuery,
-  useMutation,
-  useAction,
-} from "convex/react";
+import { api } from "@/convex/_generated/api.js";
+import { type Id } from "@/convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
-import { env } from "@/env.js";
+import { env } from "@/src/env.js";
 
 export const convex = new ConvexHttpClient(env.CONVEX_URL);
 
@@ -292,4 +285,4 @@ const dbApi = {
   },
 };
 
-export { type Id, api, dbApi, typeSafeCall };
+export { dbApi, typeSafeCall };

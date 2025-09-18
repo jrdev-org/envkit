@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "convex/**/*.ts"],
+  "include": ["src/**/*.ts", "convex/**/*.ts", "convex/**/*.js"],
   "exclude": ["node_modules"],
   "compilerOptions": {
     "outDir": "dist",
@@ -10,7 +10,7 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./*"]
     }
   }
 }

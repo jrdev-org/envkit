@@ -1,7 +1,8 @@
 import * as crypto from "node:crypto";
-import { env } from "@/env.js";
-import { api } from "../convex/_generated/api.js";
-import { convex, Id } from "@/index.js";
+import { env } from "@/src/env.js";
+import { api } from "@/convex/_generated/api.js";
+import { convex } from "@/src/index.js";
+import { type Id } from "@/convex/_generated/dataModel.js";
 
 export class VariableEncryption {
   private static readonly ALGORITHM = "aes-256-gcm";
