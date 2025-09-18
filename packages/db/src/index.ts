@@ -1,5 +1,5 @@
-import { api } from "./convex/_generated/api.js";
-import { type Id } from "./convex/_generated/dataModel.js";
+import { api } from "../convex/_generated/api.js";
+import { type Id } from "../convex/_generated/dataModel.js";
 export {
   ConvexProvider,
   ConvexReactClient,
@@ -8,10 +8,9 @@ export {
   useAction,
 } from "convex/react";
 import { ConvexHttpClient } from "convex/browser";
-import { env } from "./env.js";
-import { UserService } from "./convex/node.js";
+import { env } from "@/env.js";
 
-const convex = new ConvexHttpClient(env.CONVEX_URL);
+export const convex = new ConvexHttpClient(env.CONVEX_URL);
 
 type Ok<T> = { data: T };
 type Err = { error: string };
@@ -47,17 +46,20 @@ const dbApi = {
     get: safeCall(async (authId: string) => {
       return await convex.query(api.users.get, { authId });
     }),
-    create: safeCall(async (authId: string, name: string, email: string) => {
-      const { newUserId, newTeamId } = await convex.action(
-        api.node.createUser,
-        {
-          authId,
-          name,
-          email,
-        }
-      );
-      return { newUserId, newTeamId };
-    }),
+    create: safeCall(
+      async (authId: string, name: string, email: string, salt: string) => {
+        const { newUserId, newTeamId } = await convex.mutation(
+          api.users.create,
+          {
+            authId,
+            salt,
+            name,
+            email,
+          }
+        );
+        return { newUserId, newTeamId };
+      }
+    ),
     update: safeCall(async (id: Id<"users">, opts: Record<string, unknown>) => {
       return await convex.mutation(api.users.updateUser, { id, opts });
     }),
@@ -75,9 +77,11 @@ const dbApi = {
     getByName: safeCall(async (ownerId: Id<"users">, name: string) => {
       return await convex.query(api.teams.getByName, { ownerId, name });
     }),
-    create: safeCall(async (name: string, ownerId: Id<"users">) => {
-      return await convex.action(api.node.createTeam, { name, ownerId });
-    }),
+    create: safeCall(
+      async (name: string, ownerId: Id<"users">, salt: string) => {
+        return await convex.mutation(api.teams.create, { name, ownerId, salt });
+      }
+    ),
     update: safeCall(async (id: Id<"teams">, name: string) => {
       return await convex.mutation(api.teams.update, { id, name });
     }),
@@ -178,13 +182,13 @@ const dbApi = {
       async (
         projectId: Id<"projects">,
         name: string,
-        value: string,
+        encrypted: string,
         branch?: string
       ) => {
-        return await convex.action(api.node.createVariable, {
+        return await convex.mutation(api.variables.create, {
           projectId,
           name,
-          value,
+          encryptedValue: encrypted,
           branch,
         });
       }
@@ -288,4 +292,4 @@ const dbApi = {
   },
 };
 
-export { type Id, api, dbApi, typeSafeCall, UserService };
+export { type Id, api, dbApi, typeSafeCall };

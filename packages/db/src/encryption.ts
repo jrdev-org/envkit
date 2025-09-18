@@ -7,6 +7,7 @@ export class VariableEncryption {
   private static readonly ALGORITHM = "aes-256-gcm";
   private static readonly KEY_LENGTH = 32; // 256 bits
   private static readonly IV_LENGTH = 12; // 96 bits
+  private static readonly VERSION = "v1";
 
   /**
    * Generate a unique salt for a new user
@@ -20,7 +21,8 @@ export class VariableEncryption {
    */
   private static deriveKey(salt: string): Buffer {
     const pepper = env.ENCRYPTION_PEPPER;
-    return crypto.pbkdf2Sync(pepper, salt, 100000, this.KEY_LENGTH, "sha256");
+    // OWASP recommends >=310k iterations for PBKDF2 in 2025, adjust as needed
+    return crypto.pbkdf2Sync(pepper, salt, 10000, this.KEY_LENGTH, "sha256");
   }
 
   /**
@@ -32,51 +34,57 @@ export class VariableEncryption {
       const iv = crypto.randomBytes(this.IV_LENGTH);
       const cipher = crypto.createCipheriv(this.ALGORITHM, key, iv);
 
-      let encrypted = cipher.update(variable, "utf8", "hex");
-      encrypted += cipher.final("hex");
+      let ciphertext = cipher.update(variable, "utf8", "hex");
+      ciphertext += cipher.final("hex");
 
       const authTag = cipher.getAuthTag();
 
-      // Combine IV + authTag + encrypted data
-      const combined =
-        "v1:" +
-        iv.toString("hex") +
-        ":" +
-        authTag.toString("hex") +
-        ":" +
-        encrypted;
-      return combined;
+      // Canonical format: JSON → base64
+      const payload = {
+        v: this.VERSION,
+        iv: iv.toString("hex"),
+        ct: ciphertext,
+        tag: authTag.toString("hex"),
+      };
+
+      return Buffer.from(JSON.stringify(payload)).toString("base64");
     } catch (error) {
-      console.log(`${error instanceof Error ? error.message : String(error)}`);
-      throw new Error(`Encryption failed`);
+      console.error(
+        `Encryption failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw new Error("Encryption failed");
     }
   }
 
   /**
    * Decrypt a variable using the user's salt
    */
-  static decryptVariable(encryptedData: string, userSalt: string): string {
+  static decryptVariable(encodedData: string, userSalt: string): string {
     try {
-      const parts = encryptedData.split(":");
-      if (parts.length !== 3) {
-        throw new Error("Invalid encrypted data format");
+      const decoded = Buffer.from(encodedData, "base64").toString("utf8");
+      const payload = JSON.parse(decoded);
+
+      if (!payload.v || payload.v !== this.VERSION) {
+        throw new Error("Unsupported encryption version");
       }
 
-      const iv = Buffer.from(parts[0], "hex");
-      const authTag = Buffer.from(parts[1], "hex");
-      const encrypted = parts[2];
+      const iv = Buffer.from(payload.iv, "hex");
+      const ciphertext = payload.ct;
+      const authTag = Buffer.from(payload.tag, "hex");
 
       const key = this.deriveKey(userSalt);
       const decipher = crypto.createDecipheriv(this.ALGORITHM, key, iv);
       decipher.setAuthTag(authTag);
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
+      let decrypted = decipher.update(ciphertext, "hex", "utf8");
       decrypted += decipher.final("utf8");
 
       return decrypted;
     } catch (error) {
-      console.log(`${error instanceof Error ? error.message : String(error)}`);
-      throw new Error(`Decryption failed`);
+      console.error(
+        `Decryption failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw new Error("Decryption failed");
     }
   }
 }
@@ -128,7 +136,7 @@ export class TeamService {
     if (existing.length > 0) {
       return existing[0].salt;
     }
-    throw new Error("Salt not found");
+    return this.createSalt();
   }
 
   async encryptVariable(value: string) {
