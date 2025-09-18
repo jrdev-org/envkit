@@ -1,7 +1,7 @@
-import { api } from "@/convex/_generated/api.js";
-import { type Id } from "@/convex/_generated/dataModel.js";
+import { api } from "../convex/_generated/api.js";
+import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
-import { env } from "@/src/env.js";
+import { env } from "./env.js";
 
 export const convex = new ConvexHttpClient(env.CONVEX_URL);
 

@@ -1,6 +1,8 @@
 import { createEnv } from "@t3-oss/env-core";
 import * as v from "valibot";
 import dotenv from "dotenv";
+import path from "path";
+import { cwd } from "process";
 export {
   ConvexProvider,
   ConvexReactClient,
@@ -8,9 +10,11 @@ export {
   useMutation,
   useAction,
 } from "convex/react";
-export { api } from "@/convex/_generated/api.js";
-export { type Id } from "@/convex/_generated/dataModel.js";
-dotenv.config();
+export { api } from "../convex/_generated/api.js";
+export { type Id } from "../convex/_generated/dataModel.js";
+dotenv.config({
+  path: path.join(cwd(), ".env"),
+});
 
 enum Env {
   Development = "development",
