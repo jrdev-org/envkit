@@ -1,5 +1,5 @@
 "use client";
-import { env } from "../env.js";
+import { env } from "@/env.js";
 import { ConvexProvider, ConvexReactClient } from "@envkit/db";
 import { type ReactNode } from "react";
 

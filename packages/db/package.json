@@ -2,11 +2,18 @@
   "name": "@envkit/db",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
+  "private": true,
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./env": "./dist/src/env.js"
+  },
   "scripts": {
     "dev": "convex dev",
-    "deploy": "convex deploy"
+    "deploy": "convex deploy",
+    "build": "tsc"
   },
   "keywords": [
     "convex",

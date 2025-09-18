@@ -23,7 +23,13 @@
     "moduleResolution": "Bundler",
     "jsx": "preserve",
     "plugins": [{ "name": "next" }],
-    "incremental": true
+    "incremental": true,
+
+    /* path aliases */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": [
     "next-env.d.ts",
@@ -34,9 +40,5 @@
     ".next/types/**/*.ts"
   ],
   "exclude": ["node_modules"],
-  "references": [
-    {
-      "path": "../../packages/db"
-    }
-  ]
+  "references": [{ "path": "../../packages/db" }]
 }
