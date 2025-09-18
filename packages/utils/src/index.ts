@@ -20,14 +20,14 @@ export class MessageEncryption {
   /**
    * Derive a key from the user's salt
    */
-  private static deriveKey(salt: string): Buffer {
-    return crypto.pbkdf2Sync(
-      salt,
-      "static-pepper",
-      100000,
-      this.KEY_LENGTH,
-      "sha256"
-    );
+  private static deriveKey(
+    salt: string,
+    pepper: string = process.env.ENCRYPTION_PEPPER || ""
+  ): Buffer {
+    if (!pepper) {
+      throw new Error("Encryption pepper not configured");
+    }
+    return crypto.pbkdf2Sync(salt, pepper, 600000, this.KEY_LENGTH, "sha256");
   }
 
   /**
@@ -93,6 +93,10 @@ export class UserService {
    * Create a new user with a unique salt
    */
   createUser(userId: string): User {
+    if (this.users.has(userId)) {
+      throw new Error(`User ${userId} already exists`);
+    }
+
     const user: User = {
       id: userId,
       salt: MessageEncryption.generateSalt(),
@@ -133,37 +137,3 @@ export class UserService {
     return MessageEncryption.decryptMessage(encryptedMessage, user.salt);
   }
 }
-
-// Example usage
-const userService = new UserService();
-
-// Create users
-const user1 = userService.createUser("user123");
-const user2 = userService.createUser("user456");
-
-console.log("User 1 salt:", user1.salt);
-console.log("User 2 salt:", user2.salt);
-
-// Encrypt messages
-const message1 = "Hello, this is a secret message!";
-const message2 = "Another confidential message.";
-
-const encrypted1 = userService.encryptUserMessage("user123", message1);
-const encrypted2 = userService.encryptUserMessage("user456", message2);
-
-console.log("\nEncrypted messages:");
-console.log("User 1:", encrypted1);
-console.log("User 2:", encrypted2);
-
-// Decrypt messages
-const decrypted1 = userService.decryptUserMessage("user123", encrypted1);
-const decrypted2 = userService.decryptUserMessage("user456", encrypted2);
-
-console.log("\nDecrypted messages:");
-console.log("User 1:", decrypted1);
-console.log("User 2:", decrypted2);
-
-// Verify original messages match
-console.log("\nVerification:");
-console.log("Message 1 matches:", message1 === decrypted1);
-console.log("Message 2 matches:", message2 === decrypted2);

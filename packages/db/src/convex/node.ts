@@ -27,13 +27,11 @@ export class MessageEncryption {
    * Derive a key from the user's salt
    */
   private static deriveKey(salt: string): Buffer {
-    return crypto.pbkdf2Sync(
-      salt,
-      "static-pepper",
-      100000,
-      this.KEY_LENGTH,
-      "sha256"
-    );
+    const pepper = process.env.ENCRYPTION_PEPPER;
+    if (!pepper) {
+      throw new Error("ENCRYPTION_PEPPER environment variable is required");
+    }
+    return crypto.pbkdf2Sync(salt, pepper, 100000, this.KEY_LENGTH, "sha256");
   }
 
   /**
@@ -92,6 +90,7 @@ export class MessageEncryption {
 }
 
 export class UserService {
+  // move this to the db
   private users: Map<string, User> = new Map();
 
   /**
@@ -159,9 +158,8 @@ export const createTeam = action({
   } | null> => {
     // Generate salt in the action
     const userService = new UserService();
-    const tempUser = userService.createUser("temp"); // We just need the salt
-    const salt = tempUser.salt;
-
+    // Generate salt in the action
+    const salt = MessageEncryption.generateSalt();
     // Call the mutation with the generated salt
     return await ctx.runMutation(api.teams.create, {
       name: args.name,

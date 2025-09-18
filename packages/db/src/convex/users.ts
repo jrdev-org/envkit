@@ -139,10 +139,85 @@ export const updateUser = mutation({
 });
 
 export const remove = mutation({
-  args: { id: v.id("users") },
+  args: {
+    id: v.id("users"),
+    newOwnerId: v.optional(v.id("users")),
+    forceDeleteProjects: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.id);
     if (!user) throw new Error("User not found");
+
+    // TODO: Clean up related entities
+    // - Remove from teamMembers
+    const teamMemberships = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const teamMembership of teamMemberships) {
+      await ctx.db.delete(teamMembership._id);
+    }
+
+    // - Handle team ownership transfer or deletion
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+      .collect();
+
+    if (args.newOwnerId) {
+      // Transfer ownership
+      const newOwner = await ctx.db.get(args.newOwnerId);
+      if (!newOwner) {
+        throw new Error("Invalid new owner");
+      }
+
+      for (const team of teams) {
+        if (team.ownerId === user._id) {
+          // Transfer ownership
+          await ctx.db.patch(team._id, {
+            ownerId: newOwner._id,
+            lastAction: "team_transferred",
+            updatedAt: Date.now(),
+          });
+        } else {
+          // delete user projects
+          const projects = await ctx.db
+            .query("projects")
+            .withIndex("by_team", (q) => q.eq("teamId", team._id))
+            .collect();
+
+          if (args.forceDeleteProjects) {
+            for (const project of projects) {
+              await ctx.db.delete(project._id);
+            }
+          } else {
+            for (const project of projects) {
+              await ctx.db.patch(project._id, {
+                deletedAt: Date.now(),
+                lastAction: "project_deleted",
+                updatedAt: Date.now(),
+              });
+            }
+          }
+
+          // Delete team
+          await ctx.db.patch(team._id, {
+            state: "deleted",
+            deletedAt: Date.now(),
+            lastAction: "team_deleted",
+            updatedAt: Date.now(),
+          });
+          // - Clean up associated salts
+          const salts = await ctx.db
+            .query("salts")
+            .withIndex("by_team", (q) => q.eq("teamId", team._id))
+            .collect();
+          for (const salt of salts) {
+            await ctx.db.delete(salt._id);
+          }
+        }
+      }
+    }
 
     // add user to deletedUsers table
     await ctx.db.insert("deletedUsers", {

@@ -193,8 +193,13 @@ export const remove = mutation({
 });
 
 export const restore = mutation({
-  args: { id: v.id("teams") },
+  args: { id: v.id("teams"), ownerId: v.id("users") },
   handler: async (ctx, args) => {
+    const owner = await ctx.db.get(args.ownerId);
+    if (owner === null) {
+      throw new Error("Owner not found.");
+    }
+
     const team = await ctx.db.get(args.id);
     if (team === null) {
       throw new Error("Team not found.");
@@ -203,10 +208,14 @@ export const restore = mutation({
     if (team.state !== "deleted") {
       throw new Error("Team is not deleted.");
     }
+    if (team.ownerId !== owner._id) {
+      throw new Error("Not authorized.");
+    }
 
     await ctx.db.patch(team._id, {
       state: "active",
       lastAction: "team_restored",
+      deletedAt: undefined,
       updatedAt: Date.now(),
     });
 

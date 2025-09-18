@@ -44,7 +44,7 @@ export function safeCall<T extends (...args: any[]) => Promise<any>>(fn: T) {
 
 const dbApi = {
   users: {
-    get: typeSafeCall(async (authId: string) => {
+    get: safeCall(async (authId: string) => {
       return await convex.query(api.users.get, { authId });
     }),
     create: safeCall(async (authId: string, name: string, email: string) => {
@@ -84,8 +84,8 @@ const dbApi = {
     remove: safeCall(async (id: Id<"teams">, ownerId: Id<"users">) => {
       return await convex.mutation(api.teams.remove, { id, ownerId });
     }),
-    restore: safeCall(async (id: Id<"teams">) => {
-      return await convex.mutation(api.teams.restore, { id });
+    restore: safeCall(async (id: Id<"teams">, ownerId: Id<"users">) => {
+      return await convex.mutation(api.teams.restore, { id, ownerId });
     }),
     getMembers: safeCall(async (id: Id<"teams">) => {
       return await convex.query(api.teams.getMembers, { id });

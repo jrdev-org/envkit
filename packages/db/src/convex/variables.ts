@@ -124,7 +124,11 @@ export const create = mutation({
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
       )
-      .filter((q) => q.eq(q.field("branch"), branch))
+      .filter(
+        branch === undefined
+          ? (q) => q.eq(q.field("deletedAt"), undefined)
+          : (q) => q.eq(q.field("branch"), branch)
+      )
       .first();
 
     if (existing && existing.deletedAt === undefined) {
@@ -159,16 +163,22 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Project doesn't exist");
-
-    const name = args.name.trim();
-    const branch = args.branch?.trim();
-
+    const { name, branch } = args;
     const existing = await ctx.db
       .query("variables")
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
       )
+      .filter(
+        branch === undefined
+          ? (q) => q.eq(q.field("branch"), undefined)
+          : (q) => q.eq(q.field("branch"), branch)
+      )
       .first();
+
+    if (!existing || existing.deletedAt) {
+      throw new Error(`Variable "${name}" does not exist`);
+    }
 
     if (!existing || existing.deletedAt) {
       throw new Error(`Variable "${name}" does not exist`);
@@ -207,6 +217,11 @@ export const deleteVariable = mutation({
       .query("variables")
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
+      )
+      .filter(
+        branch === undefined
+          ? (q) => q.eq(q.field("branch"), undefined)
+          : (q) => q.eq(q.field("branch"), branch)
       )
       .first();
 

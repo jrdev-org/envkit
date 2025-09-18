@@ -58,11 +58,10 @@ export const completeAuth = mutation({
     token: v.string(),
   },
   async handler(ctx, args) {
-    const { token: _token, tokenHash } = await tokenAndHash();
     // Find pending session by deviceId
     const session = await ctx.db
       .query("cliSessions")
-      .withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash))
+      .withIndex("by_token_hash", (q) => q.eq("tokenHash", args.token))
       .filter((q) => q.eq(q.field("status"), "pending"))
       .first();
 

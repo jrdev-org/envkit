@@ -44,7 +44,7 @@ export default defineSchema({
   salts: defineTable({
     teamId: v.id("teams"),
     salt: v.string(),
-  }),
+  }).index("by_team", ["teamId"]),
 
   teamMembers: defineTable({
     teamId: v.id("teams"),
