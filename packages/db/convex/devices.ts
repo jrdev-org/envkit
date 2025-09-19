@@ -22,6 +22,23 @@ export const get = query({
   },
 });
 
+export const getById = query({
+  args: { deviceId: v.string() },
+  handler: async (ctx, { deviceId }) => {
+    const device = await ctx.db
+      .query("devices")
+      .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceId))
+      .first();
+    if (!device) {
+      return "not_found";
+    }
+    if (device.deletedAt) {
+      return "deleted";
+    }
+    return "found";
+  },
+});
+
 export const remove = mutation({
   args: {
     deviceId: v.string(),

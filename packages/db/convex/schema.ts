@@ -111,7 +111,7 @@ export default defineSchema({
   cliSessions: defineTable({
     userId: v.id("users"),
     deviceId: v.string(),
-    tokenHash: v.string(),
+    permanentToken: v.optional(v.string()),
     tempToken: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -126,5 +126,6 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_deviceId", ["deviceId"])
-    .index("by_token_hash", ["tokenHash"]),
+    .index("by_temp_token", ["tempToken"])
+    .index("by_permanent_token", ["permanentToken"]),
 });
