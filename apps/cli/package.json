@@ -9,8 +9,7 @@
     "envkit": "dist/src/cli.js"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "dev": "tsx --watch src/cli.ts"
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": "./dist/src/index.js"
@@ -31,6 +30,7 @@
     "detect-port": "^2.1.0",
     "hono": "^4.9.8",
     "open": "^10.2.0",
-    "ora": "^9.0.0"
+    "ora": "^9.0.0",
+    "valibot": "^1.1.0"
   }
 }
