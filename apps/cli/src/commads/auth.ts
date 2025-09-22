@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {
+  clearAuthToken,
   getStoredAuthToken,
+  isAuthenticated,
   startAuthServer,
   storeAuthToken,
 } from "@/lib/auth.js";
@@ -16,6 +18,7 @@ import open from "open";
 import * as crypto from "crypto";
 
 const authCmd = new Command("auth")
+  .alias("login")
   .description("Authenticate with envkit")
   .action(async () => {
     // ensure user isn't already logged in
@@ -162,4 +165,18 @@ const authCmd = new Command("auth")
     }
   });
 
-export default authCmd;
+const logoutCmd = new Command("logout")
+  .alias("bye")
+  .description("Log out of the current session")
+  .action(async () => {
+    const loggedIn = await isAuthenticated();
+    if (!loggedIn) {
+      return log.info("No auth token found, please login!");
+    } else {
+      await clearAuthToken();
+      log.success("Logged out successfully!");
+    }
+    process.exit(0);
+  });
+
+export { authCmd, logoutCmd };
