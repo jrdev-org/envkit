@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { authCmd, logoutCmd } from "./commads/auth.js";
+import { authCmd, logoutCmd, whoamiCmd } from "./commads/auth.js";
 
 // SIGINT handler
 process.on("SIGINT", () => {
@@ -24,4 +24,5 @@ const program = new Command("envkit")
 
 program.addCommand(authCmd);
 program.addCommand(logoutCmd);
+program.addCommand(whoamiCmd);
 program.parse(process.argv);

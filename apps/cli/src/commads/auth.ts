@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import {
-  clearAuthToken,
   getStoredAuthToken,
-  isAuthenticated,
+  requireAuthToken,
+  revokeSesion,
   startAuthServer,
   storeAuthToken,
 } from "@/lib/auth.js";
 import { getDeviceInfo } from "@/lib/device.js";
 import { log } from "@/lib/logger.js";
-import { dbApi } from "@envkit/db";
+import { dbApi, safeCall } from "@envkit/db";
 import { confirm } from "@inquirer/prompts";
 import { env } from "@/lib/env.js";
 import { type Id } from "@envkit/db/env";
@@ -169,14 +169,31 @@ const logoutCmd = new Command("logout")
   .alias("bye")
   .description("Log out of the current session")
   .action(async () => {
-    const loggedIn = await isAuthenticated();
-    if (!loggedIn) {
-      return log.info("No auth token found, please login!");
+    const token = await requireAuthToken();
+    const res = await revokeSesion(token.sessionId);
+    if (res.includes("NO_AUTH")) {
+      log.info("No auth token found, please login!");
+    } else if (res.includes("ERR")) {
+      log.error(res.split("ERR: ")[1]);
     } else {
-      await clearAuthToken();
       log.success("Logged out successfully!");
     }
     process.exit(0);
   });
 
-export { authCmd, logoutCmd };
+const whoamiCmd = new Command("whoami")
+  .description("Get information about the current user")
+  .action(async () => {
+    const token = await requireAuthToken();
+    const res = await safeCall(
+      async () => await dbApi.users.get(token.userId)
+    )();
+    if ("error" in res) {
+      log.error(res.error);
+    } else {
+      log.info(`Logged in as ${res.name}`);
+    }
+    process.exit(0);
+  });
+
+export { authCmd, logoutCmd, whoamiCmd };

@@ -4,6 +4,8 @@ import { log } from "./logger.js";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { dbApi, safeCall } from "@envkit/db";
+import { Id } from "@envkit/db/env";
 
 export interface AuthToken {
   token: string;
@@ -48,6 +50,32 @@ export async function clearAuthToken(): Promise<void> {
   try {
     await fs.unlink(TOKEN_FILE);
   } catch {}
+}
+
+export async function revokeSesion(sessionId: string) {
+  const token = await getStoredAuthToken();
+  if (!token) {
+    return "NO_AUTH: No auth token found, please login!";
+  }
+  const res = await safeCall(
+    async () =>
+      await dbApi.cli.revokeSession(
+        sessionId as unknown as Id<"cliSessions">,
+        token.userId as unknown as Id<"users">
+      )
+  )();
+
+  if ("error" in res) {
+    return `ERR: ${res.error}`;
+  }
+
+  if (!res.success) {
+    return "ERR: Failed to revoke session";
+  }
+
+  await clearAuthToken();
+
+  return "OK: Session revoked";
 }
 
 export async function isAuthenticated(): Promise<boolean> {
