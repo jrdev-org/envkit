@@ -1,5 +1,4 @@
 "use client";
-import { api, useQuery } from "@envkit/db/env";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -62,14 +61,6 @@ function TeamIcon() {
 }
 
 export default function HomePage() {
-  const user = useQuery(api.users.get, {
-    authId: "user_31lpXm6H3ImT4erNp7b8FHwfu5O",
-  });
-
-  if (!user) {
-    return <div>Loading...</div>;
-  }
-
   return (
     <main className="flex min-h-screen flex-col bg-black text-gray-100">
       {/* Header */}
@@ -107,7 +98,6 @@ export default function HomePage() {
           Manage environment variables without friction. Sync, branch, and stage
           with a single CLI.
         </p>
-        <p>User: {user.name}</p>
         <p className="mb-12 max-w-xl text-xl text-gray-400">
           Manage environment variables without friction. Sync, branch, and stage
           with a single CLI.

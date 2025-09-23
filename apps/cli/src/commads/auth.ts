@@ -16,6 +16,7 @@ import { Command } from "commander";
 import { pickAvailablePort } from "@/lib/port.js";
 import open from "open";
 import * as crypto from "crypto";
+import chalk from "chalk";
 
 const authCmd = new Command("auth")
   .alias("login")
@@ -25,7 +26,7 @@ const authCmd = new Command("auth")
     const existing = await getStoredAuthToken();
     if (existing) {
       log.info(
-        "You are already logged in. Please run `envkit auth logout` to log out."
+        `You are already logged in. Please run ${chalk.bold("envkit auth logout")} to log out.`
       );
       process.exit(0);
     }

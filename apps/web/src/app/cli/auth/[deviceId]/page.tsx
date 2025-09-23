@@ -7,9 +7,10 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { useUser, RedirectToSignIn, UserButton } from "@clerk/nextjs";
+import { api, useMutation, useQuery } from "@envkit/db/env";
 import { Terminal, AlertCircle, CheckCircle } from "lucide-react";
 import { use, useState } from "react";
-import { set } from "zod";
+import * as crypto from "crypto";
 
 export default function AuthPage({
   params,
@@ -27,6 +28,7 @@ export default function AuthPage({
   const { user, isLoaded, isSignedIn } = useUser();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authStatus, setAuthStatus] = useState("null");
+  const createUser = useMutation(api.users.create);
 
   if (!isLoaded) return <div>Loading...</div>;
 
@@ -54,8 +56,14 @@ export default function AuthPage({
     }
 
     // send userId to cli
+    const dbUser = await createUser({
+      authId: user.id,
+      salt: crypto.randomBytes(32).toString("hex"),
+      name: user.fullName ?? user.firstName ?? "User",
+      email: user.primaryEmailAddress?.emailAddress ?? "user@example.com",
+    });
     const userRes = await fetch(
-      `http://localhost:${encodeURIComponent(port)}/auth/${encodeURIComponent(user.id)}`,
+      `http://localhost:${encodeURIComponent(port)}/auth/${encodeURIComponent(dbUser.newUserId)}`,
       {
         method: "POST",
         headers: {

@@ -2,6 +2,8 @@ import { api } from "../convex/_generated/api.js";
 import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
 // import { env } from "./env.js";
+import dotenv from "dotenv";
+dotenv.config();
 
 export const convex = new ConvexHttpClient(process.env.CONVEX_URL!);
 
@@ -265,4 +267,8 @@ const dbApi = {
   },
 };
 
-export { dbApi, typeSafeCall };
+export function createConvexClient(convexUrl: string) {
+  return new ConvexHttpClient(convexUrl);
+}
+
+export { dbApi, typeSafeCall, ConvexHttpClient };
