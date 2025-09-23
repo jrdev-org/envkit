@@ -77,6 +77,24 @@ async function writeEnvFile(filePath: string, vars: Record<string, string>) {
   await fs.writeFile(filePath, content, { encoding: "utf-8" });
 }
 
+// TODO: create a writeProjectsDir function ...
+const getProject = dbApi.projects.get;
+type Project = Awaited<ReturnType<typeof getProject>>;
+
+async function writeProjectsDir(project: Project) {
+  const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
+
+  const enriched = {
+    ...project,
+    linkedAt: Date.now(), // add or update timestamp
+  };
+
+  await fs.writeFile(filePath, JSON.stringify(enriched, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600, // secure owner-only read/write
+  });
+}
+
 // link existing project
 async function linkProject(workDir: string, token: AuthToken, teams: any[]) {
   const team = await select({
@@ -141,7 +159,7 @@ async function linkProject(workDir: string, token: AuthToken, teams: any[]) {
 
   const merged = await resolveConflicts(envFilePath, newVars);
   await writeEnvFile(envFilePath, merged);
-
+  await writeProjectsDir(projectToLink);
   // await recordAudit({
   //   timestamp: Date.now(),
   //   project: projectToLink.name,
@@ -214,7 +232,7 @@ async function createProject(workDir: string, token: AuthToken, teams: any[]) {
 
   const merged = await resolveConflicts(envFilePath, newVars);
   await writeEnvFile(envFilePath, merged);
-
+  await writeProjectsDir(newProject);
   await recordAudit({
     timestamp: Date.now(),
     project: projectName,
@@ -228,7 +246,7 @@ async function createProject(workDir: string, token: AuthToken, teams: any[]) {
   });
 
   projectSpinner.succeed("Project created successfully!");
-  log.success(`Run ${chalk.bold("envkit push dev")} to push variables`);
+  log.success(`Run ${chalk.bold(`envkit push ${stage}`)} to push variables`);
 }
 
 export const initCmd = new Command("init")

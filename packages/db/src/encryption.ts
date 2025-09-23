@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { env } from "./env.js";
+// import { env } from "./env.js";
 import { api } from "../convex/_generated/api.js";
 import { convex } from "./index.js";
 import { type Id } from "../convex/_generated/dataModel.js";
@@ -21,7 +21,7 @@ export class VariableEncryption {
    * Derive a key from the user's salt
    */
   private static deriveKey(salt: string): Buffer {
-    const pepper = env.ENCRYPTION_PEPPER;
+    const pepper = process.env.ENCRYPTION_PEPPER!;
     // OWASP recommends >=310k iterations for PBKDF2 in 2025, adjust as needed
     return crypto.pbkdf2Sync(pepper, salt, 10000, this.KEY_LENGTH, "sha256");
   }

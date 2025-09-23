@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 
 import { type Metadata } from "next";
 import { Geist } from "next/font/google";
-// import { ConvexClientProvider } from "./convex-client-provider";
+import { ConvexClientProvider } from "./convex-client-provider";
 
 export const metadata: Metadata = {
   title: "Envkit",
@@ -23,9 +23,9 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" className={`${geist.variable}`}>
         <body>
-          {/* <ConvexClientProvider> */}
-          {children}
-          {/* </ConvexClientProvider> */}
+          <ConvexClientProvider>
+            {children}
+          </ConvexClientProvider>
         </body>
       </html>
     </ClerkProvider>

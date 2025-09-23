@@ -1,9 +1,9 @@
 import { api } from "../convex/_generated/api.js";
 import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
-import { env } from "./env.js";
+// import { env } from "./env.js";
 
-export const convex = new ConvexHttpClient(env.CONVEX_URL);
+export const convex = new ConvexHttpClient(process.env.CONVEX_URL!);
 
 type Ok<T> = { data: T };
 type Err = { error: string };
