@@ -150,7 +150,7 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
 
   const projectSpinner = log.task("Linking project...").start();
   const variables = await safeCall(() =>
-    dbApi.variables.get(projectToLink._id)
+    dbApi.variables.get(projectToLink._id, projectToLink.stage)
   )();
   if ("error" in variables) throw new Error(variables.error);
 

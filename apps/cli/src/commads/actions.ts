@@ -288,18 +288,6 @@ export const pullCmd = new Command("pull")
     //   });
     // }
 
-    const variables = await safeCall(async () => {
-      const { variables } = await dbApi.variables.getProjectAndVars(
-        linkedProject._id,
-        projectStage
-      );
-      return variables;
-    })();
-    if ("error" in variables) {
-      return log.throw(variables.error);
-    }
-    console.log("Variables: ", variables);
-
     const pullSpinner = log
       .task(
         `Pulling variables from ${linkedProject.name} (${linkedProject.stage})`
@@ -313,6 +301,16 @@ export const pullCmd = new Command("pull")
       return log.throw(dbProject.error);
     }
     console.log("Project", dbProject);
+
+    const variables = await safeCall(async () => {
+      const variables = await dbApi.variables.get(dbProject._id, projectStage);
+      return variables;
+    })();
+    if ("error" in variables) {
+      return log.throw(variables.error);
+    }
+    console.log("Stage: ", projectStage);
+    console.log("Variables: ", variables);
 
     const teamService = new TeamService(
       dbProject.teamId,
