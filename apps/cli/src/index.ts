@@ -1,4 +1,7 @@
 import { dbApi } from "@envkit/db";
+// import dotenv from "dotenv";
+
+// dotenv.config();
 
 async function main() {
   const me = await dbApi.users.get(process.env.TEST_USER_ID!);

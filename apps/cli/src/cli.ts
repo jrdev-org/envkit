@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { authCmd, logoutCmd, whoamiCmd } from "./commads/auth.js";
 import { initCmd } from "./commads/init.js";
+import { pullCmd, pushCmd } from "./commads/actions.js";
 
 // SIGINT handler
 process.on("SIGINT", () => {
@@ -27,4 +28,6 @@ program.addCommand(authCmd);
 program.addCommand(logoutCmd);
 program.addCommand(whoamiCmd);
 program.addCommand(initCmd);
+program.addCommand(pushCmd);
+program.addCommand(pullCmd);
 program.parse(process.argv);

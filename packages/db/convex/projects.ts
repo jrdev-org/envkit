@@ -1,5 +1,75 @@
 import { v } from "convex/values";
-import { internalQuery, mutation, query } from "./_generated/server.js";
+import { mutation, query } from "./_generated/server.js";
+
+export const addVars = mutation({
+  args: {
+    projectId: v.id("projects"),
+    callerId: v.id("users"),
+    vars: v.array(
+      v.object({
+        name: v.string(),
+        value: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, { projectId, callerId, vars }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project || project.deletedAt) {
+      throw new Error("Project not found");
+    }
+
+    const user = await ctx.db.get(callerId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", callerId)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .filter((q) => q.neq(q.field("role"), "viewer"))
+      .collect()
+      .then((m) => m.map((m) => m.userId === user._id));
+
+    if (!teamMember) {
+      throw new Error("You are not authorized to update this project");
+    }
+
+    const projectVars = await ctx.db
+      .query("variables")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+
+    const conflicting = projectVars.filter((v) => v.name in vars);
+
+    const now = Date.now();
+
+    for (const { name, value } of vars) {
+      // if conflicting, update value
+      const conflictingVar = conflicting.find((v) => v.name === name);
+      if (conflictingVar) {
+        await ctx.db.patch(conflictingVar._id, {
+          value,
+        });
+      } else {
+        await ctx.db.insert("variables", {
+          projectId,
+          name,
+          value,
+        });
+      }
+    }
+
+    await ctx.db.patch(project._id, {
+      lastAction: `updated by ${user.name}`,
+      updatedAt: now,
+    });
+
+    return await ctx.db.get(projectId);
+  },
+});
 
 export const create = mutation({
   args: { name: v.string(), stage: v.string(), teamId: v.id("teams") },

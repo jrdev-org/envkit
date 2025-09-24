@@ -1,3 +1,4 @@
+import { addVars } from "convex/projects.js";
 import { api } from "../convex/_generated/api.js";
 import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
@@ -107,6 +108,20 @@ const dbApi = {
     },
   },
   projects: {
+    addVars: async (
+      projectId: Id<"projects">,
+      callerId: Id<"users">,
+      vars: Array<{
+        name: string;
+        value: string;
+      }>
+    ) => {
+      return await convex.mutation(api.projects.addVars, {
+        projectId,
+        callerId,
+        vars,
+      });
+    },
     create: async (name: string, stage: string, teamId: Id<"teams">) => {
       return await convex.mutation(api.projects.create, {
         name,

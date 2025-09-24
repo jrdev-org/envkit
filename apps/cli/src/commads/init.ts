@@ -12,7 +12,9 @@ import { TeamService } from "@envkit/db/encryption";
 import dotenv from "dotenv";
 import { recordAudit } from "@/lib/audit.js";
 
-async function loadEnvFile(filePath: string): Promise<Record<string, string>> {
+export async function loadEnvFile(
+  filePath: string
+): Promise<Record<string, string>> {
   try {
     const data = await fs.readFile(filePath, "utf8");
     return dotenv.parse(data);
@@ -21,7 +23,7 @@ async function loadEnvFile(filePath: string): Promise<Record<string, string>> {
   }
 }
 
-async function resolveConflicts(
+export async function resolveConflicts(
   filePath: string,
   newVars: Record<string, string>
 ): Promise<Record<string, string>> {
@@ -69,7 +71,10 @@ async function resolveConflicts(
   return merged;
 }
 
-async function writeEnvFile(filePath: string, vars: Record<string, string>) {
+export async function writeEnvFile(
+  filePath: string,
+  vars: Record<string, string>
+) {
   const content =
     Object.entries(vars)
       .map(([k, v]) => `${k}=${v}`)
@@ -79,9 +84,26 @@ async function writeEnvFile(filePath: string, vars: Record<string, string>) {
 
 // TODO: create a writeProjectsDir function ...
 const getProject = dbApi.projects.get;
-type Project = Awaited<ReturnType<typeof getProject>>;
+const getTeam = dbApi.teams.get;
+export type Team = Awaited<ReturnType<typeof getTeam>>[0];
+export type Project = Awaited<ReturnType<typeof getProject>>;
+export type LinkedProject = Project & { linkedAt: number };
 
-async function writeProjectsDir(project: Project) {
+export async function writeProjectsDir(project: Project) {
+  const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
+
+  const enriched = {
+    ...project,
+    linkedAt: Date.now(), // add or update timestamp
+  };
+
+  await fs.writeFile(filePath, JSON.stringify(enriched, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600, // secure owner-only read/write
+  });
+}
+
+export async function updateProjectsDir(project: Project) {
   const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
 
   const enriched = {
@@ -96,7 +118,7 @@ async function writeProjectsDir(project: Project) {
 }
 
 // link existing project
-async function linkProject(workDir: string, token: AuthToken, teams: any[]) {
+async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
   const team = await select({
     message: "Select team to link project to",
     choices: teams.map((t) => ({
@@ -181,7 +203,7 @@ async function linkProject(workDir: string, token: AuthToken, teams: any[]) {
 }
 
 // create new project
-async function createProject(workDir: string, token: AuthToken, teams: any[]) {
+async function createProject(workDir: string, teams: Team[]) {
   const projectName = await input({
     message: "What is your project name?",
     default: workDir.split("/").pop(),
@@ -249,34 +271,44 @@ async function createProject(workDir: string, token: AuthToken, teams: any[]) {
   log.success(`Run ${chalk.bold(`envkit push ${stage}`)} to push variables`);
 }
 
-export const initCmd = new Command("init")
-  .description("Initialize a new project")
-  .action(async () => {
-    const WORKING_DIR = process.cwd();
-    const token = await requireAuthToken();
-    const teams = await dbApi.teams.get(token.userId as unknown as Id<"users">);
+export async function runInit(todo?: "link" | "create") {
+  const WORKING_DIR = process.cwd();
+  const token = await requireAuthToken();
+  const teams = await dbApi.teams.get(token.userId as unknown as Id<"users">);
 
-    if (!teams.length) {
-      log.error("You don't have any teams yet. Please create one first.");
-      return;
-    }
+  if (!teams.length) {
+    log.error("You don't have any teams yet. Please create one first.");
+    return;
+  }
 
-    const action = await select({
+  if (!todo) {
+    todo = await select({
       message: "What do you want to do?",
       choices: [
         { name: "Create a new project", value: "create" },
         { name: "Link an existing project", value: "link" },
       ],
     });
+  }
 
-    try {
-      if (action === "link") {
-        await linkProject(WORKING_DIR, token, teams);
-      } else {
-        await createProject(WORKING_DIR, token, teams);
-      }
-    } catch (err) {
-      log.error((err as Error).message);
-      process.exit(1);
+  try {
+    if (todo === "link") {
+      await linkProject(WORKING_DIR, token, teams);
+    } else if (todo === "create") {
+      await createProject(WORKING_DIR, teams);
+    } else {
+      throw new Error("Invalid action");
     }
-  });
+  } catch (err) {
+    log.error(
+      (err as Error).message.includes("fetch failed")
+        ? "Network error"
+        : (err as Error).message
+    );
+    process.exit(1);
+  }
+}
+
+export const initCmd = new Command("init")
+  .description("Initialize a new project")
+  .action(runInit);
