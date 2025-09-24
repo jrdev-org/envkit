@@ -165,7 +165,7 @@ const dbApi = {
     },
   },
   variables: {
-    get: async (projectId: Id<"projects">, branch: string) => {
+    get: async (projectId: Id<"projects">, branch?: string) => {
       return await convex.query(api.variables.get, { projectId, branch });
     },
     getProjectAndVars: async (projectId: Id<"projects">, branch?: string) => {

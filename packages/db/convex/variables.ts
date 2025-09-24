@@ -63,12 +63,12 @@ async function updateSnapshot(
 
 // Get all active variables for a project (optionally filtered by branch)
 export const get = query({
-  args: { projectId: v.id("projects"), branch: v.string() },
+  args: { projectId: v.id("projects"), branch: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Project doesn't exist");
 
-    const branch = args.branch.trim();
+    const branch = args.branch?.trim();
 
     const vars = await ctx.db
       .query("variables")
