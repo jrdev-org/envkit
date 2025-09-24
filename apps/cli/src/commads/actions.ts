@@ -163,7 +163,7 @@ export const pushCmd = new Command("push")
     );
 
     const dbVars = await safeCall(
-      async () => await dbApi.variables.get(linkedProject._id)
+      async () => await dbApi.variables.get(dbProject._id, undefined)
     )();
     if ("error" in dbVars) {
       return log.throw(dbVars.error);
@@ -300,35 +300,26 @@ export const pullCmd = new Command("pull")
     if ("error" in dbProject) {
       return log.throw(dbProject.error);
     }
-    console.log("Project", dbProject);
 
     const variables = await safeCall(async () => {
-      const variables = await dbApi.variables.get(dbProject._id, projectStage);
+      const variables = await dbApi.variables.get(dbProject._id, undefined);
       return variables;
     })();
     if ("error" in variables) {
       return log.throw(variables.error);
     }
-    console.log("Stage: ", projectStage);
-    console.log("Variables: ", variables);
+    console.log("\nVariables: ", variables.length);
 
     const teamService = new TeamService(
       dbProject.teamId,
       token.userId as unknown as Id<"users">
     );
-    const decryptedVariables: { name: string; value: string }[] = [];
 
-    const _ = Object.fromEntries(
-      await Promise.all(
-        Object.entries(variables).map(async ([k, v]) => {
-          const decrypted = await teamService.decryptVariable(v.value);
-          decryptedVariables.push({ name: k, value: decrypted });
-          return [k, decrypted] as const;
-        })
-      )
-    );
-
-    console.log("Variables: ", decryptedVariables);
+    variables.forEach(async (v) => {
+      console.log("Decrypting variable: ", v.name);
+      const decrypted = await teamService.decryptVariable(v.value);
+      console.log("\nDecrypted: ", v.name, decrypted);
+    });
 
     // const dbVars = await safeCall(
     //   async () => await dbApi.variables.get(linkedProject._id)
@@ -377,7 +368,5 @@ export const pullCmd = new Command("pull")
 
     pullSpinner.succeed("Variables pulled successfully!");
     log.success(`Run ${chalk.bold("envkit push")} to push variables`);
-    console.table(variables);
-
     process.exit(0);
   });
