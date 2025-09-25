@@ -140,6 +140,7 @@ export const create = mutation({
       name,
       value: args.encryptedValue,
       branch,
+      updatedAt: Date.now(),
     });
 
     // Update snapshot

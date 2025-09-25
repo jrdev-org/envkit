@@ -18,9 +18,10 @@ import {
   resolveConflicts,
   runInit,
   updateProjectsDir,
+  writeEnvFile,
   type LinkedProject,
 } from "./init.js";
-import { confirm, select } from "@inquirer/prompts";
+import { confirm, input, select } from "@inquirer/prompts";
 import { dbApi, safeCall } from "@envkit/db";
 import { TeamService } from "@envkit/db/encryption";
 import { type Id } from "@envkit/db/env";
@@ -205,9 +206,11 @@ export const pushCmd = new Command("push")
       return log.throw(res.error);
     }
 
-    await updateProjectsDir(res);
+    await updateProjectsDir(res.updatedProject);
 
-    pushSpinner.succeed("Variables pushed successfully!");
+    pushSpinner.succeed(
+      `Variables pushed successfully! ${res.additions.length} new variables added, ${res.removals.length} removed and ${res.conflicts} variables modified.`
+    );
     log.success(`Run ${chalk.bold("envkit pull")} to pull variables`);
 
     process.exit(0);
@@ -268,26 +271,6 @@ export const pullCmd = new Command("pull")
       process.exit(1);
     }
 
-    // const allFiles = await fs.readdir(process.cwd());
-    // const envFiles = allFiles.filter((f) => f.startsWith(".env"));
-    // if (!envFiles.length) {
-    //   log.warn("No environment files found in the current directory");
-    //   process.exit(1);
-    // }
-
-    // let envFile: string;
-    // if (envFiles.length === 1) {
-    //   envFile = envFiles[0];
-    // } else {
-    //   envFile = await select({
-    //     message: "What environment file do you want to pull from?",
-    //     choices: envFiles.map((f) => ({
-    //       name: f,
-    //       value: f,
-    //     })),
-    //   });
-    // }
-
     const pullSpinner = log
       .task(
         `Pulling variables from ${linkedProject.name} (${linkedProject.stage})`
@@ -308,65 +291,67 @@ export const pullCmd = new Command("pull")
     if ("error" in variables) {
       return log.throw(variables.error);
     }
-    console.log("\nVariables: ", variables.length);
 
     const teamService = new TeamService(
       dbProject.teamId,
       token.userId as unknown as Id<"users">
     );
 
-    variables.forEach(async (v) => {
-      console.log("Decrypting variable: ", v.name);
+    const decryptedVariables: { name: string; value: string }[] = [];
+    for (const v of variables) {
       const decrypted = await teamService.decryptVariable(v.value);
-      console.log("\nDecrypted: ", v.name, decrypted);
-    });
-
-    // const dbVars = await safeCall(
-    //   async () => await dbApi.variables.get(linkedProject._id)
-    // )();
-    // if ("error" in dbVars) {
-    //   return log.throw(dbVars.error);
-    // }
-
-    // // TODO: check if variables already exist
-    // let confirmation: boolean;
-    // const conflicting = dbVars.filter((v) => v.name in decryptedVariables);
-    // if (!conflicting.length) {
-    //   confirmation = true;
-    // } else {
-    //   confirmation = await confirm({
-    //     message: `The pull will overwrite the following variables: ${conflicting.map((v) => v.name).join(", ")}. Are you sure?`,
-    //     default: false,
-    //   });
-    // }
-
-    // if (!confirmation) {
-    //   log.info("Aborting...");
-    //   process.exit(0);
-    // }
-
-    // const res = await safeCall(
-    //   async () =>
-    //     await dbApi.projects.addVars(
-    //       dbProject._id,
-    //       token.userId as unknown as Id<"users">,
-    //       decryptedVariables
-    //     )
-    // )();
-
-    // if (!res) {
-    //   pullSpinner.fail("Error pulling variables!");
-    //   return log.throw("Failed to pull variables! Please try again.");
-    // }
-
-    // if ("error" in res) {
-    //   pullSpinner.fail("Error pulling variables!");
-    //   return log.throw(res.error);
-    // }
-
-    // await updateProjectsDir(res);
-
+      decryptedVariables.push({ name: v.name, value: decrypted });
+    }
     pullSpinner.succeed("Variables pulled successfully!");
+
+    let envFile: string;
+    const allFiles = await fs.readdir(process.cwd());
+    const envFiles = allFiles.filter((f) => f.startsWith(".env"));
+    if (!envFiles.length) {
+      log.warn("No environment files found in the current directory");
+      envFile = await input({
+        message: "Where do you want your variables?",
+        default: `.env.local`,
+      });
+    } else {
+      envFile = await select({
+        message: "Where do you want your variables?",
+        choices: envFiles.map((f) => ({
+          name: f,
+          value: f,
+        })),
+        loop: true,
+        default: ".env.local",
+      });
+    }
+
+    // TODO: check if variables already exist
+    let confirmation: boolean;
+    const existingVars = await loadEnvFile(envFile);
+    const conflicting = decryptedVariables.filter(
+      (v) => v.name in existingVars && v.value !== existingVars[v.name]
+    );
+    if (!conflicting.length) {
+      confirmation = true;
+    } else {
+      confirmation = await confirm({
+        message: `The pull will overwrite the following variables: ${conflicting.map((v) => v.name).join(", ")}. Are you sure?`,
+        default: false,
+      });
+    }
+
+    if (!confirmation) {
+      log.info("Aborting...");
+      process.exit(0);
+    }
+
+    await writeEnvFile(
+      envFile,
+      Object.fromEntries(decryptedVariables.map((v) => [v.name, v.value]))
+    );
+
+    await updateProjectsDir(dbProject);
+
     log.success(`Run ${chalk.bold("envkit push")} to push variables`);
     process.exit(0);
   });

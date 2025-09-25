@@ -63,6 +63,13 @@ export default defineSchema({
     name: v.string(),
     stage: v.string(),
     teamId: v.id("teams"), // always owned by a team
+    // snapshot: just names and maybe last updated time
+    variableSummary: v.array(
+      v.object({
+        name: v.string(),
+        updatedAt: v.number(), // epoch millis
+      })
+    ),
     lastAction: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
     updatedAt: v.number(),
@@ -76,6 +83,7 @@ export default defineSchema({
     value: v.string(), // encrypted
     branch: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
+    updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_name", ["projectId", "name"]),

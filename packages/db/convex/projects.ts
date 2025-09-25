@@ -26,12 +26,11 @@ export const addVars = mutation({
     const teamMember = await ctx.db
       .query("teamMembers")
       .withIndex("by_team_and_user", (q) =>
-        q.eq("teamId", project.teamId).eq("userId", callerId)
+        q.eq("teamId", project.teamId).eq("userId", user._id)
       )
       .filter((q) => q.eq(q.field("removedAt"), undefined))
       .filter((q) => q.neq(q.field("role"), "viewer"))
-      .collect()
-      .then((m) => m.map((m) => m.userId === user._id));
+      .first();
 
     if (!teamMember) {
       throw new Error("You are not authorized to update this project");
@@ -39,27 +38,56 @@ export const addVars = mutation({
 
     const projectVars = await ctx.db
       .query("variables")
-      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
       .collect();
 
-    const conflicting = projectVars.filter((v) => v.name in vars);
+    // build sets
+    const incomingNames = new Set(vars.map((x) => x.name));
+    const existingNames = new Set(projectVars.map((v) => v.name));
+
+    // classify
+    const conflicts = projectVars.filter((v) => incomingNames.has(v.name));
+    const additions = vars.filter((v) => !existingNames.has(v.name));
+    const removals = projectVars.filter((v) => !incomingNames.has(v.name));
 
     const now = Date.now();
 
+    // update conflicts
     for (const { name, value } of vars) {
-      // if conflicting, update value
-      const conflictingVar = conflicting.find((v) => v.name === name);
-      if (conflictingVar) {
-        await ctx.db.patch(conflictingVar._id, {
-          value,
-        });
+      const existing = conflicts.find((v) => v.name === name);
+
+      if (existing) {
+        if (existing.deletedAt) {
+          // Reactivate soft-deleted variable
+          await ctx.db.patch(existing._id, {
+            value, // bring in new value
+            deletedAt: undefined,
+            updatedAt: now,
+          });
+        } else if (existing.value !== value) {
+          // Only update if changed
+          await ctx.db.patch(existing._id, {
+            value,
+            updatedAt: now,
+          });
+        }
+        // if value is the same and not deleted, no-op
       } else {
-        await ctx.db.insert("variables", {
-          projectId,
-          name,
-          value,
-        });
+        // brand new insertion
+        for (const v of additions) {
+          await ctx.db.insert("variables", {
+            projectId: project._id,
+            name: v.name,
+            value: v.value,
+            updatedAt: now,
+          });
+        }
       }
+    }
+
+    // soft-delete removals (keep audit trail)
+    for (const v of removals) {
+      await ctx.db.patch(v._id, { deletedAt: now });
     }
 
     await ctx.db.patch(project._id, {
@@ -67,7 +95,9 @@ export const addVars = mutation({
       updatedAt: now,
     });
 
-    return await ctx.db.get(projectId);
+    const updatedProject = await ctx.db.get(project._id);
+    if (!updatedProject) throw new Error("Project not found");
+    return { updatedProject, additions, removals, conflicts };
   },
 });
 
@@ -97,6 +127,16 @@ export const create = mutation({
       name,
       stage,
       teamId: team._id,
+      variableSummary: [
+        {
+          name: "PROJECT_NAME",
+          updatedAt: Date.now(),
+        },
+        {
+          name: "TEAM_NAME",
+          updatedAt: Date.now(),
+        },
+      ],
       lastAction: "created",
       updatedAt: Date.now(),
     });
