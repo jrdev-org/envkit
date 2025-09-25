@@ -1,16 +1,59 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
+import { createHash } from "crypto"; // Assuming 'crypto' is available in Convex or a similar utility is provided
+
+// Helper function to calculate hash of variables
+async function calculateVariablesHash(
+  ctx: any, // Convex context
+  projectId: any, // Id<"projects">
+  branch?: string
+): Promise<string> {
+  const vars = await ctx.db
+    .query("variables")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .filter((q) => q.eq(q.field("branch"), branch))
+    .filter((q) => q.eq(q.field("deletedAt"), undefined))
+    .collect();
+
+  if (vars.length === 0) {
+    return createHash("sha256").update("").digest("hex");
+  }
+
+  const canonical = vars
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((v) => `${v.name}=${v.value}`)
+    .join("\n");
+
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
 
 // ------------------ Queries ------------------
 
 // Get all active variables for a project (optionally filtered by branch)
 export const get = query({
-  args: { projectId: v.id("projects"), branch: v.optional(v.string()) },
+  args: {
+    projectId: v.id("projects"),
+    branch: v.optional(v.string()),
+    localHash: v.optional(v.string()), // New argument
+  },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Project doesn't exist");
 
     const branch = args.branch?.trim();
+
+    // Calculate server-side hash
+    const serverHash = await calculateVariablesHash(
+      ctx,
+      project._id,
+      branch
+    );
+
+    // Compare with localHash if provided
+    if (args.localHash && args.localHash === serverHash) {
+      throw new Error("NO_CHANGES"); // Throw specific error for client to catch
+    }
 
     const vars = await ctx.db
       .query("variables")

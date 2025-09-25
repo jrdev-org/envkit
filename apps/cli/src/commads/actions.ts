@@ -14,6 +14,7 @@ import { Command } from "commander";
 import fs from "fs/promises";
 import path from "path";
 import {
+  getEnvFileHash,
   loadEnvFile,
   resolveConflicts,
   runInit,
@@ -132,6 +133,12 @@ export const pushCmd = new Command("push")
       });
     }
 
+    const currentHash = await getEnvFileHash(envFile);
+    if (linkedProject.hash && currentHash === linkedProject.hash) {
+      log.info("No changes in environment file. Nothing to push.");
+      process.exit(0);
+    }
+
     const variables = await loadEnvFile(envFile);
 
     const pushSpinner = log
@@ -206,7 +213,8 @@ export const pushCmd = new Command("push")
       return log.throw(res.error);
     }
 
-    await updateProjectsDir(res.updatedProject);
+    const newHash = await getEnvFileHash(envFile);
+    await updateProjectsDir(res.updatedProject, newHash);
 
     pushSpinner.succeed(
       `Variables pushed successfully! ${res.additions.length} new variables added, ${res.removals.length} removed and ${res.conflicts} variables modified.`
@@ -285,9 +293,18 @@ export const pullCmd = new Command("pull")
     }
 
     const variables = await safeCall(async () => {
-      const variables = await dbApi.variables.get(dbProject._id, undefined);
+      const variables = await dbApi.variables.get(
+        dbProject._id,
+        undefined,
+        linkedProject.hash
+      );
       return variables;
     })();
+
+    if ("error" in variables && variables.error === "NO_CHANGES") {
+      pullSpinner.succeed("Already up to date.");
+      process.exit(0);
+    }
     if ("error" in variables) {
       return log.throw(variables.error);
     }
@@ -350,7 +367,8 @@ export const pullCmd = new Command("pull")
       Object.fromEntries(decryptedVariables.map((v) => [v.name, v.value]))
     );
 
-    await updateProjectsDir(dbProject);
+    const newHash = await getEnvFileHash(envFile);
+    await updateProjectsDir(dbProject, newHash);
 
     log.success(`Run ${chalk.bold("envkit push")} to push variables`);
     process.exit(0);

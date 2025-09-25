@@ -11,6 +11,7 @@ import { PROJECTS_DIR } from "@/constants.js";
 import { TeamService } from "@envkit/db/encryption";
 import dotenv from "dotenv";
 import { recordAudit } from "@/lib/audit.js";
+import { createHash } from "crypto";
 
 export async function loadEnvFile(
   filePath: string
@@ -21,6 +22,18 @@ export async function loadEnvFile(
   } catch {
     return {};
   }
+}
+
+export async function getEnvFileHash(filePath: string): Promise<string> {
+  const envVars = await loadEnvFile(filePath);
+  if (Object.keys(envVars).length === 0) {
+    return createHash("sha256").update("").digest("hex");
+  }
+  const canonical = Object.entries(envVars)
+    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 export async function resolveConflicts(
@@ -87,14 +100,15 @@ const getProject = dbApi.projects.get;
 const getTeam = dbApi.teams.get;
 export type Team = Awaited<ReturnType<typeof getTeam>>[0];
 export type Project = Awaited<ReturnType<typeof getProject>>;
-export type LinkedProject = Project & { linkedAt: number };
+export type LinkedProject = Project & { linkedAt: number; hash?: string };
 
-export async function writeProjectsDir(project: Project) {
+export async function writeProjectsDir(project: Project, hash?: string) {
   const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
 
-  const enriched = {
+  const enriched: LinkedProject = {
     ...project,
     linkedAt: Date.now(), // add or update timestamp
+    ...(hash && { hash }),
   };
 
   await fs.writeFile(filePath, JSON.stringify(enriched, null, 2), {
@@ -103,12 +117,13 @@ export async function writeProjectsDir(project: Project) {
   });
 }
 
-export async function updateProjectsDir(project: Project) {
+export async function updateProjectsDir(project: Project, hash?: string) {
   const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
 
-  const enriched = {
+  const enriched: LinkedProject = {
     ...project,
     linkedAt: Date.now(), // add or update timestamp
+    ...(hash && { hash }),
   };
 
   await fs.writeFile(filePath, JSON.stringify(enriched, null, 2), {
@@ -181,7 +196,8 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
 
   const merged = await resolveConflicts(envFilePath, newVars);
   await writeEnvFile(envFilePath, merged);
-  await writeProjectsDir(projectToLink);
+  const hash = await getEnvFileHash(envFilePath);
+  await writeProjectsDir(projectToLink, hash);
   // await recordAudit({
   //   timestamp: Date.now(),
   //   project: projectToLink.name,
@@ -254,7 +270,8 @@ async function createProject(workDir: string, teams: Team[]) {
 
   const merged = await resolveConflicts(envFilePath, newVars);
   await writeEnvFile(envFilePath, merged);
-  await writeProjectsDir(newProject);
+  const hash = await getEnvFileHash(envFilePath);
+  await writeProjectsDir(newProject, hash);
   await recordAudit({
     timestamp: Date.now(),
     project: projectName,
