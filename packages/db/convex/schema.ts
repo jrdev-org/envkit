@@ -88,16 +88,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_and_name", ["projectId", "name"]),
 
-  projectSnapshots: defineTable({
-    projectId: v.id("projects"),
-    branch: v.optional(v.string()),
-    lastUpdatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-    etag: v.string(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_branch", ["projectId", "branch"]),
-
   // --- Devices + CLI Sessions ---
   devices: defineTable({
     userId: v.id("users"),

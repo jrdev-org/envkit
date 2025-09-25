@@ -153,6 +153,7 @@ export const remove = mutation({
     const teamMemberships = await ctx.db
       .query("teamMembers")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .collect();
     for (const teamMembership of teamMemberships) {
       await ctx.db.delete(teamMembership._id);

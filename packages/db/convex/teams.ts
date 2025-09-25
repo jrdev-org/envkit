@@ -234,9 +234,10 @@ export const getMembers = query({
     const members = await ctx.db
       .query("teamMembers")
       .withIndex("by_team", (q) => q.eq("teamId", args.id))
+      .filter((q) => q.eq("removedAt", undefined))
       .collect();
 
-    return members.filter((m) => m.removedAt === undefined);
+    return members;
   },
 });
 
@@ -270,20 +271,21 @@ export const addMember = mutation({
       .withIndex("by_team_and_user", (q) =>
         q.eq("teamId", team._id).eq("userId", existingUser._id)
       )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
 
-    if (existingMember !== null && existingMember.removedAt === undefined) {
+    if (existingMember) {
       throw new Error(`User is already ${existingMember.role}.`);
     }
 
     if (typeof team.maxMembers === "number") {
-      const activeCount = await ctx.db
+      const activeMembers = await ctx.db
         .query("teamMembers")
         .withIndex("by_team", (q) => q.eq("teamId", team._id))
-        .collect()
-        .then((rows) => rows.filter((m) => m.removedAt === undefined).length);
+        .filter((q) => q.eq(q.field("removedAt"), undefined))
+        .collect();
 
-      if (activeCount >= team.maxMembers) {
+      if (activeMembers.length >= team.maxMembers) {
         throw new Error("Team member limit reached");
       }
     }
@@ -318,6 +320,7 @@ export const removeMember = mutation({
         .withIndex("by_team_and_user", (q) =>
           q.eq("teamId", args.id).eq("userId", args.actingUserId)
         )
+        .filter((q) => q.eq(q.field("removedAt"), undefined))
         .first();
 
       if (!actingUserMember || actingUserMember.role !== "admin") {
@@ -330,6 +333,7 @@ export const removeMember = mutation({
       .withIndex("by_team_and_user", (q) =>
         q.eq("teamId", args.id).eq("userId", args.userId)
       )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
 
     if (teamMember === null) {

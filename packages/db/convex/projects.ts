@@ -90,9 +90,31 @@ export const addVars = mutation({
       await ctx.db.patch(v._id, { deletedAt: now });
     }
 
+    const projectForSummary = await ctx.db.get(project._id);
+    if (!projectForSummary) {
+      throw new Error("Project not found after updates");
+    }
+
+    const summaryMap = new Map<string, number>();
+    // Keep existing system variables
+    projectForSummary.variableSummary.forEach((v) => {
+      if (v.name === "PROJECT_NAME" || v.name === "TEAM_NAME") {
+        summaryMap.set(v.name, v.updatedAt);
+      }
+    });
+    // Add/update user variables
+    vars.forEach((v) => {
+      summaryMap.set(v.name, now);
+    });
+
+    const newSummary = Array.from(summaryMap.entries()).map(
+      ([name, updatedAt]) => ({ name, updatedAt })
+    );
+
     await ctx.db.patch(project._id, {
       lastAction: `updated by ${user.name}`,
       updatedAt: now,
+      variableSummary: newSummary,
     });
 
     const updatedProject = await ctx.db.get(project._id);
@@ -117,9 +139,10 @@ export const create = mutation({
       .withIndex("by_team_and_name_and_stage", (q) =>
         q.eq("teamId", team._id).eq("name", name).eq("stage", stage)
       )
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
       .first();
 
-    if (existing && existing.deletedAt === undefined) {
+    if (existing) {
       throw new Error(`Project already exists.`);
     }
 
@@ -141,7 +164,25 @@ export const create = mutation({
       updatedAt: Date.now(),
     });
 
-    return await ctx.db.get(newProjectId);
+    const newProject = await ctx.db.get(newProjectId);
+    if (!newProject) throw new Error("Project not found");
+    // insert PROJECT_NAME and TEAM_NAME variables
+    await Promise.all([
+      ctx.db.insert("variables", {
+        projectId: newProject._id,
+        name: "PROJECT_NAME",
+        value: newProject.name,
+        updatedAt: Date.now(),
+      }),
+      ctx.db.insert("variables", {
+        projectId: newProject._id,
+        name: "TEAM_NAME",
+        value: team.name,
+        updatedAt: Date.now(),
+      }),
+    ]);
+
+    return newProject;
   },
 });
 
@@ -155,10 +196,9 @@ export const list = query({
     const teamProjects = await ctx.db
       .query("projects")
       .withIndex("by_team", (q) => q.eq("teamId", team._id))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
       .collect();
-    return teamProjects
-      .filter((p) => p.deletedAt === undefined)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return teamProjects.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -196,6 +236,7 @@ export const rename = mutation({
       .withIndex("by_team_and_user", (q) =>
         q.eq("teamId", teamId).eq("userId", userId)
       )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
 
     if (!teamMember) throw new Error("You are not a member of this team");
@@ -219,12 +260,9 @@ export const rename = mutation({
           .eq("name", normalizedName)
           .eq("stage", normalizedStage)
       )
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
       .first();
-    if (
-      conflict &&
-      conflict._id !== project._id &&
-      conflict.deletedAt === undefined
-    ) {
+    if (conflict && conflict._id !== project._id) {
       throw new Error("Another project with this name already exists");
     }
 
@@ -274,6 +312,7 @@ export const remove = mutation({
       .withIndex("by_team_and_user", (q) =>
         q.eq("teamId", teamId).eq("userId", userId)
       )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
 
     if (!teamMember) throw new Error("You are not a member of this team");
@@ -306,16 +345,6 @@ export const remove = mutation({
       deletedAt: Date.now(),
       lastAction: "project_deleted",
     });
-
-    // Cleanup related snapshots for this project
-    const snapshots = await ctx.db
-      .query("projectSnapshots")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .collect();
-
-    for (const snap of snapshots) {
-      await ctx.db.patch(snap._id, { deletedAt: Date.now() });
-    }
 
     return { success: true, project };
   },

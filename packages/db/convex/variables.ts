@@ -1,63 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server.js";
-import { Id } from "./_generated/dataModel.js";
-import { computeETag } from "./helpers.js";
-
-// Insert or patch project snapshot per branch
-async function insertOrPatch(
-  ctx: MutationCtx,
-  args: { projectId: Id<"projects">; branch?: string; etag: string }
-) {
-  const existing = await ctx.db
-    .query("projectSnapshots")
-    .withIndex("by_project_and_branch", (q) =>
-      q.eq("projectId", args.projectId).eq("branch", args.branch ?? undefined)
-    )
-    .first();
-
-  if (!existing) {
-    return await ctx.db.insert("projectSnapshots", {
-      projectId: args.projectId,
-      branch: args.branch,
-      lastUpdatedAt: Date.now(),
-      etag: args.etag,
-    });
-  }
-
-  await ctx.db.patch(existing._id, {
-    lastUpdatedAt: Date.now(),
-    etag: args.etag,
-    deletedAt: undefined,
-  });
-
-  return existing._id;
-}
-
-// Update snapshot helper that fetches active vars and upserts project snapshot
-async function updateSnapshot(
-  ctx: MutationCtx,
-  args: { projectId: Id<"projects">; branch?: string }
-) {
-  const allVars = await ctx.db
-    .query("variables")
-    .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-    .collect();
-
-  const activeVars = allVars.filter(
-    (v) =>
-      v.deletedAt === undefined && (!args.branch || v.branch === args.branch)
-  );
-
-  const etag = await computeETag(activeVars);
-
-  const snapshotId = await insertOrPatch(ctx, {
-    projectId: args.projectId,
-    branch: args.branch,
-    etag,
-  });
-
-  return { activeVars, snapshotId };
-}
+import { mutation, query } from "./_generated/server.js";
 
 // ------------------ Queries ------------------
 
@@ -90,14 +32,15 @@ export const getProjectAndVars = query({
 
     const branch = args.branch?.trim();
 
-    const vars = await ctx.db
+    const query = ctx.db
       .query("variables")
       .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .collect();
+      .filter((q) => q.eq(q.field("deletedAt"), undefined));
 
-    const activeVars = vars.filter(
-      (v) => v.deletedAt === undefined && (!branch || v.branch === branch)
-    );
+    const activeVars = await (branch
+      ? query.filter((q) => q.eq(q.field("branch"), branch))
+      : query
+    ).collect();
 
     return { project, variables: activeVars };
   },
@@ -124,32 +67,37 @@ export const create = mutation({
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
       )
-      .filter(
-        branch === undefined
-          ? (q) => q.eq(q.field("deletedAt"), undefined)
-          : (q) => q.eq(q.field("branch"), branch)
-      )
+      .filter((q) => q.eq(q.field("branch"), branch))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
       .first();
 
-    if (existing && existing.deletedAt === undefined) {
+    if (existing) {
       throw new Error(`Variable "${name}" already exists`);
     }
 
+    const now = Date.now();
     await ctx.db.insert("variables", {
       projectId: project._id,
       name,
       value: args.encryptedValue,
       branch,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
 
-    // Update snapshot
-    const { activeVars, snapshotId } = await updateSnapshot(ctx, {
-      projectId: project._id,
-      branch,
+    const newSummaryEntry = { name, updatedAt: now };
+    const existingSummary = project.variableSummary.find((s) => s.name === name);
+    const newSummary = existingSummary
+      ? project.variableSummary.map((s) =>
+          s.name === name ? newSummaryEntry : s
+        )
+      : [...project.variableSummary, newSummaryEntry];
+
+    await ctx.db.patch(project._id, {
+      variableSummary: newSummary,
+      updatedAt: now,
     });
 
-    return { activeVars, snapshotId };
+    return await ctx.db.get(project._id);
   },
 });
 
@@ -170,33 +118,34 @@ export const update = mutation({
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
       )
-      .filter(
-        branch === undefined
-          ? (q) => q.eq(q.field("branch"), undefined)
-          : (q) => q.eq(q.field("branch"), branch)
-      )
+      .filter((q) => q.eq(q.field("branch"), branch))
       .first();
 
     if (!existing || existing.deletedAt) {
       throw new Error(`Variable "${name}" does not exist`);
     }
 
-    if (!existing || existing.deletedAt) {
-      throw new Error(`Variable "${name}" does not exist`);
-    }
-
+    const now = Date.now();
     await ctx.db.patch(existing._id, {
       value: args.value, // assume encrypted upstream
       branch,
+      updatedAt: now,
     });
 
-    // Update snapshot
-    const { activeVars, snapshotId } = await updateSnapshot(ctx, {
-      projectId: project._id,
-      branch,
+    const updatedSummaryEntry = { name, updatedAt: now };
+    const newSummary = project.variableSummary.map((s) =>
+      s.name === name ? updatedSummaryEntry : s
+    );
+
+    await ctx.db.patch(project._id, {
+      variableSummary: newSummary,
+      updatedAt: now,
     });
 
-    return { updatedVar: existing, activeVars, snapshotId };
+    return {
+      updatedVar: { ...existing, value: args.value, updatedAt: now },
+      project: await ctx.db.get(project._id),
+    };
   },
 });
 
@@ -219,25 +168,25 @@ export const deleteVariable = mutation({
       .withIndex("by_project_and_name", (q) =>
         q.eq("projectId", project._id).eq("name", name)
       )
-      .filter(
-        branch === undefined
-          ? (q) => q.eq(q.field("branch"), undefined)
-          : (q) => q.eq(q.field("branch"), branch)
-      )
+      .filter((q) => q.eq(q.field("branch"), branch))
       .first();
 
     if (!existing || existing.deletedAt) {
       throw new Error("Variable not found or already deleted");
     }
 
-    await ctx.db.patch(existing._id, { deletedAt: Date.now() });
+    const now = Date.now();
+    await ctx.db.patch(existing._id, { deletedAt: now });
 
-    // Update snapshot
-    const { activeVars, snapshotId } = await updateSnapshot(ctx, {
-      projectId: project._id,
-      branch,
+    const newSummary = project.variableSummary.filter((s) => s.name !== name);
+    await ctx.db.patch(project._id, {
+      variableSummary: newSummary,
+      updatedAt: now,
     });
 
-    return { deletedVar: existing, activeVars, snapshotId };
+    return {
+      deletedVar: { ...existing, deletedAt: now },
+      project: await ctx.db.get(project._id),
+    };
   },
 });
