@@ -11,6 +11,7 @@ import { PROJECTS_DIR } from "@/constants.js";
 import { TeamService } from "@envkit/db/encryption";
 import dotenv from "dotenv";
 import { recordAudit } from "@/lib/audit.js";
+import { ensureEnvLocal } from "./actions.js";
 
 export async function loadEnvFile(
   filePath: string
@@ -298,6 +299,7 @@ async function createProject(workDir: string, teams: Team[]) {
   log.success(`Run ${chalk.bold(`envkit push ${stage}`)} to push variables`);
 }
 
+// --- Refactored init ---
 export async function runInit(todo?: "link" | "create") {
   const WORKING_DIR = process.cwd();
   const token = await requireAuthToken();
@@ -317,6 +319,9 @@ export async function runInit(todo?: "link" | "create") {
       ],
     });
   }
+
+  // REVIEW: always migrate to .env.local at init
+  await ensureEnvLocal();
 
   try {
     if (todo === "link") {
