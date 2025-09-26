@@ -16,7 +16,6 @@ import path from "path";
 import {
   getEnvFileHash,
   loadEnvFile,
-  resolveConflicts,
   runInit,
   updateProjectsDir,
   writeEnvFile,
@@ -26,7 +25,6 @@ import { confirm, input, select } from "@inquirer/prompts";
 import { dbApi, safeCall } from "@envkit/db";
 import { TeamService } from "@envkit/db/encryption";
 import { type Id } from "@envkit/db/env";
-import { string } from "valibot";
 
 async function getProjects(dir: string) {
   const dirContents = await fs.stat(PROJECTS_DIR).catch(() => null);
@@ -39,6 +37,7 @@ async function getProjects(dir: string) {
     return false;
   }
   const projects = await fs.readdir(PROJECTS_DIR);
+  if (!projects.length) return false;
   return projects.filter((p) =>
     p.includes(dir)
   ) as `projectName-projectStage`[];
@@ -135,7 +134,7 @@ export const pushCmd = new Command("push")
 
     const currentHash = await getEnvFileHash(envFile);
     if (linkedProject.hash && currentHash === linkedProject.hash) {
-      log.info("No changes in environment file. Nothing to push.");
+      log.warn("No changes in environment file. Nothing to push.");
       process.exit(0);
     }
 
@@ -147,39 +146,34 @@ export const pushCmd = new Command("push")
       )
       .start();
 
-    const dbProject = await safeCall(async () =>
-      dbApi.projects.get(linkedProject._id)
-    )();
-    if ("error" in dbProject) {
-      return log.throw(dbProject.error);
-    }
-
-    const teamService = new TeamService(
-      dbProject.teamId,
-      token.userId as unknown as Id<"users">
-    );
-    const encryptedVariables: { name: string; value: string }[] = [];
-
-    const _ = Object.fromEntries(
-      await Promise.all(
-        Object.entries(variables).map(async ([k, v]) => {
-          const encrypted = await teamService.encryptVariable(v);
-          encryptedVariables.push({ name: k, value: encrypted });
-          return [k, encrypted] as const;
-        })
-      )
-    );
-
     const dbVars = await safeCall(
-      async () => await dbApi.variables.get(dbProject._id, undefined)
+      async () => await dbApi.projects.getVars(linkedProject._id, currentHash)
     )();
     if ("error" in dbVars) {
-      return log.throw(dbVars.error);
+      throw new Error(dbVars.error);
     }
+    if (!dbVars.changed) {
+      pushSpinner.succeed("Already up to date");
+      log.warn("No variables changed");
+      process.exit(0);
+    }
+
+    const encryptedVariables: { name: string; value: string }[] = [];
+    const teamService = new TeamService(
+      linkedProject.teamId,
+      token.userId as unknown as Id<"users">
+    );
+
+    await Promise.all(
+      Object.entries(variables).map(async ([k, v]) => {
+        const encrypted = await teamService.encryptVariable(v);
+        encryptedVariables.push({ name: k, value: encrypted });
+      })
+    );
 
     // TODO: check if variables already exist
     let confirmation: boolean;
-    const conflicting = dbVars.filter((v) => v.name in encryptedVariables);
+    const conflicting = dbVars.vars.filter((v) => v.name in encryptedVariables);
     if (!conflicting.length) {
       confirmation = true;
     } else {
@@ -190,14 +184,14 @@ export const pushCmd = new Command("push")
     }
 
     if (!confirmation) {
-      log.info("Aborting...");
+      log.warn("Aborting...");
       process.exit(0);
     }
 
     const res = await safeCall(
       async () =>
         await dbApi.projects.addVars(
-          dbProject._id,
+          linkedProject._id,
           token.userId as unknown as Id<"users">,
           encryptedVariables
         )
@@ -205,19 +199,19 @@ export const pushCmd = new Command("push")
 
     if (!res) {
       pushSpinner.fail("Error pushing variables!");
-      return log.throw("Failed to push variables! Please try again.");
+      log.error("Failed to push variables! Please try again.");
     }
 
     if ("error" in res) {
       pushSpinner.fail("Error pushing variables!");
-      return log.throw(res.error);
+      throw new Error(res.error);
     }
 
     const newHash = await getEnvFileHash(envFile);
     await updateProjectsDir(res.updatedProject, newHash);
 
     pushSpinner.succeed(
-      `Variables pushed successfully! ${res.additions.length} new variables added, ${res.removals.length} removed and ${res.conflicts} variables modified.`
+      `Variables pushed successfully! ${res.additions.length} new variables added, ${res.removals.length} removed and ${res.conflicts.length} variables modified.`
     );
     log.success(`Run ${chalk.bold("envkit pull")} to pull variables`);
 
@@ -285,17 +279,9 @@ export const pullCmd = new Command("pull")
       )
       .start();
 
-    const dbProject = await safeCall(async () =>
-      dbApi.projects.get(linkedProject._id)
-    )();
-    if ("error" in dbProject) {
-      return log.throw(dbProject.error);
-    }
-
     const variables = await safeCall(async () => {
-      const variables = await dbApi.variables.get(
-        dbProject._id,
-        undefined,
+      const variables = await dbApi.projects.getVars(
+        linkedProject._id,
         linkedProject.hash
       );
       return variables;
@@ -306,16 +292,22 @@ export const pullCmd = new Command("pull")
       process.exit(0);
     }
     if ("error" in variables) {
-      return log.throw(variables.error);
+      pullSpinner.fail("Error pulling variables!");
+      throw new Error(variables.error);
+    }
+    if (!variables.changed) {
+      pullSpinner.succeed("Already up to date.");
+      log.warn("No changes in environment file. Nothing to pull.");
+      process.exit(0);
     }
 
     const teamService = new TeamService(
-      dbProject.teamId,
+      linkedProject.teamId,
       token.userId as unknown as Id<"users">
     );
 
     const decryptedVariables: { name: string; value: string }[] = [];
-    for (const v of variables) {
+    for (const v of variables.vars) {
       const decrypted = await teamService.decryptVariable(v.value);
       decryptedVariables.push({ name: v.name, value: decrypted });
     }
@@ -367,9 +359,8 @@ export const pullCmd = new Command("pull")
       Object.fromEntries(decryptedVariables.map((v) => [v.name, v.value]))
     );
 
-    const newHash = await getEnvFileHash(envFile);
-    await updateProjectsDir(dbProject, newHash);
+    await updateProjectsDir(linkedProject, variables.hash);
 
-    log.success(`Run ${chalk.bold("envkit push")} to push variables`);
+    log.success(`Variables successfully decrypted and saved to ${envFile}`);
     process.exit(0);
   });

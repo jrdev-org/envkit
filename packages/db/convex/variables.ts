@@ -1,11 +1,11 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server.js";
-import { createHash } from "crypto"; // Assuming 'crypto' is available in Convex or a similar utility is provided
+import { mutation, query, QueryCtx } from "./_generated/server.js";
+import { Id } from "./_generated/dataModel.js";
 
 // Helper function to calculate hash of variables
-async function calculateVariablesHash(
-  ctx: any, // Convex context
-  projectId: any, // Id<"projects">
+export async function calculateVariablesHash(
+  ctx: QueryCtx, // Convex context
+  projectId: Id<"projects">,
   branch?: string
 ): Promise<string> {
   const vars = await ctx.db
@@ -16,7 +16,7 @@ async function calculateVariablesHash(
     .collect();
 
   if (vars.length === 0) {
-    return createHash("sha256").update("").digest("hex");
+    return "";
   }
 
   const canonical = vars
@@ -24,70 +24,16 @@ async function calculateVariablesHash(
     .map((v) => `${v.name}=${v.value}`)
     .join("\n");
 
-  return createHash("sha256").update(canonical).digest("hex");
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical)
+  );
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hashHex;
 }
-
-
-// ------------------ Queries ------------------
-
-// Get all active variables for a project (optionally filtered by branch)
-export const get = query({
-  args: {
-    projectId: v.id("projects"),
-    branch: v.optional(v.string()),
-    localHash: v.optional(v.string()), // New argument
-  },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) throw new Error("Project doesn't exist");
-
-    const branch = args.branch?.trim();
-
-    // Calculate server-side hash
-    const serverHash = await calculateVariablesHash(
-      ctx,
-      project._id,
-      branch
-    );
-
-    // Compare with localHash if provided
-    if (args.localHash && args.localHash === serverHash) {
-      throw new Error("NO_CHANGES"); // Throw specific error for client to catch
-    }
-
-    const vars = await ctx.db
-      .query("variables")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .filter((q) => q.eq(q.field("branch"), branch))
-      .filter((q) => q.eq(q.field("deletedAt"), undefined))
-      .collect();
-
-    return vars;
-  },
-});
-
-// Get project with its variables
-export const getProjectAndVars = query({
-  args: { projectId: v.id("projects"), branch: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) throw new Error("Project doesn't exist");
-
-    const branch = args.branch?.trim();
-
-    const query = ctx.db
-      .query("variables")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .filter((q) => q.eq(q.field("deletedAt"), undefined));
-
-    const activeVars = await (branch
-      ? query.filter((q) => q.eq(q.field("branch"), branch))
-      : query
-    ).collect();
-
-    return { project, variables: activeVars };
-  },
-});
 
 // ------------------ Mutations ------------------
 
@@ -128,7 +74,9 @@ export const create = mutation({
     });
 
     const newSummaryEntry = { name, updatedAt: now };
-    const existingSummary = project.variableSummary.find((s) => s.name === name);
+    const existingSummary = project.variableSummary.find(
+      (s) => s.name === name
+    );
     const newSummary = existingSummary
       ? project.variableSummary.map((s) =>
           s.name === name ? newSummaryEntry : s

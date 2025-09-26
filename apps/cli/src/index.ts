@@ -1,11 +1,18 @@
-import { dbApi } from "@envkit/db";
+import { dbApi, safeCall } from "@envkit/db";
 // import dotenv from "dotenv";
 
 // dotenv.config();
 
 async function main() {
-  const me = await dbApi.users.get(process.env.TEST_USER_ID!);
+  const me = await safeCall(
+    async () => await dbApi.users.get(process.env.TEST_USER_ID!)
+  )();
+  if ("error" in me) {
+    console.log(me.error);
+    return;
+  }
   console.table(me);
+  return;
 }
 
 main();

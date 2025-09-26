@@ -1,5 +1,42 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
+import { calculateVariablesHash } from "./variables.js";
+
+export const getVars = query({
+  args: {
+    projectId: v.id("projects"),
+    localHash: v.string(), // New argument
+    branch: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Project doesn't exist");
+
+    const branch = args.branch?.trim();
+
+    // Calculate server-side hash
+    const serverHash = await calculateVariablesHash(
+      ctx,
+      args.projectId,
+      branch
+    );
+
+    const vars = await ctx.db
+      .query("variables")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .filter((q) => q.eq(q.field("branch"), branch))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .collect();
+
+    // Compare with localHash if provided
+    if (args.localHash.trim() === serverHash) {
+      // More ergonomic than throwing
+      return { changed: false, hash: serverHash, vars: [] };
+    }
+
+    return { changed: true, hash: serverHash, vars };
+  },
+});
 
 export const addVars = mutation({
   args: {
@@ -23,6 +60,7 @@ export const addVars = mutation({
       throw new Error("User not found");
     }
 
+    // Authorization check
     const teamMember = await ctx.db
       .query("teamMembers")
       .withIndex("by_team_and_user", (q) =>
@@ -39,82 +77,64 @@ export const addVars = mutation({
     const projectVars = await ctx.db
       .query("variables")
       .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
       .collect();
 
-    // build sets
     const incomingNames = new Set(vars.map((x) => x.name));
     const existingNames = new Set(projectVars.map((v) => v.name));
 
-    // classify
     const conflicts = projectVars.filter((v) => incomingNames.has(v.name));
     const additions = vars.filter((v) => !existingNames.has(v.name));
     const removals = projectVars.filter((v) => !incomingNames.has(v.name));
 
     const now = Date.now();
 
-    // update conflicts
+    // Update conflicts and insert additions
     for (const { name, value } of vars) {
       const existing = conflicts.find((v) => v.name === name);
 
       if (existing) {
-        if (existing.deletedAt) {
-          // Reactivate soft-deleted variable
+        if (typeof existing.deletedAt === "number") {
           await ctx.db.patch(existing._id, {
-            value, // bring in new value
+            value,
             deletedAt: undefined,
             updatedAt: now,
           });
         } else if (existing.value !== value) {
-          // Only update if changed
-          await ctx.db.patch(existing._id, {
-            value,
-            updatedAt: now,
-          });
+          await ctx.db.patch(existing._id, { value, updatedAt: now });
         }
-        // if value is the same and not deleted, no-op
+        // unchanged → no-op
       } else {
-        // brand new insertion
-        for (const v of additions) {
-          await ctx.db.insert("variables", {
-            projectId: project._id,
-            name: v.name,
-            value: v.value,
-            updatedAt: now,
-          });
-        }
+        await ctx.db.insert("variables", {
+          projectId: project._id,
+          name,
+          value,
+          updatedAt: now,
+        });
       }
     }
 
-    // soft-delete removals (keep audit trail)
+    // Soft delete removals
     for (const v of removals) {
       await ctx.db.patch(v._id, { deletedAt: now });
     }
 
-    const projectForSummary = await ctx.db.get(project._id);
-    if (!projectForSummary) {
-      throw new Error("Project not found after updates");
-    }
+    // Rebuild variable summary from the current active set
+    const activeVars = await ctx.db
+      .query("variables")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .collect();
 
-    const summaryMap = new Map<string, number>();
-    // Keep existing system variables
-    projectForSummary.variableSummary.forEach((v) => {
-      if (v.name === "PROJECT_NAME" || v.name === "TEAM_NAME") {
-        summaryMap.set(v.name, v.updatedAt);
-      }
-    });
-    // Add/update user variables
-    vars.forEach((v) => {
-      summaryMap.set(v.name, now);
-    });
-
-    const newSummary = Array.from(summaryMap.entries()).map(
-      ([name, updatedAt]) => ({ name, updatedAt })
-    );
+    const summary = activeVars.map((v) => ({
+      name: v.name,
+      updatedAt: v.updatedAt ?? now,
+    }));
 
     await ctx.db.patch(project._id, {
       lastAction: `updated by ${user.name}`,
       updatedAt: now,
-      variableSummary: newSummary,
+      variableSummary: summary,
     });
 
     const updatedProject = await ctx.db.get(project._id);

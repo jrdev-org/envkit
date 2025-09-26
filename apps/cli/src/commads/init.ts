@@ -11,7 +11,6 @@ import { PROJECTS_DIR } from "@/constants.js";
 import { TeamService } from "@envkit/db/encryption";
 import dotenv from "dotenv";
 import { recordAudit } from "@/lib/audit.js";
-import { createHash } from "crypto";
 
 export async function loadEnvFile(
   filePath: string
@@ -27,13 +26,21 @@ export async function loadEnvFile(
 export async function getEnvFileHash(filePath: string): Promise<string> {
   const envVars = await loadEnvFile(filePath);
   if (Object.keys(envVars).length === 0) {
-    return createHash("sha256").update("").digest("hex");
+    return "";
   }
   const canonical = Object.entries(envVars)
     .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
     .map(([key, value]) => `${key}=${value}`)
     .join("\n");
-  return createHash("sha256").update(canonical).digest("hex");
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical)
+  );
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hashHex;
 }
 
 export async function resolveConflicts(
@@ -100,15 +107,15 @@ const getProject = dbApi.projects.get;
 const getTeam = dbApi.teams.get;
 export type Team = Awaited<ReturnType<typeof getTeam>>[0];
 export type Project = Awaited<ReturnType<typeof getProject>>;
-export type LinkedProject = Project & { linkedAt: number; hash?: string };
+export type LinkedProject = Project & { linkedAt: number; hash: string };
 
-export async function writeProjectsDir(project: Project, hash?: string) {
+export async function writeProjectsDir(project: Project, hash: string) {
   const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
 
   const enriched: LinkedProject = {
     ...project,
-    linkedAt: Date.now(), // add or update timestamp
-    ...(hash && { hash }),
+    linkedAt: Date.now(),
+    hash: hash,
   };
 
   await fs.writeFile(filePath, JSON.stringify(enriched, null, 2), {
@@ -117,13 +124,13 @@ export async function writeProjectsDir(project: Project, hash?: string) {
   });
 }
 
-export async function updateProjectsDir(project: Project, hash?: string) {
+export async function updateProjectsDir(project: Project, hash: string) {
   const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
 
   const enriched: LinkedProject = {
     ...project,
-    linkedAt: Date.now(), // add or update timestamp
-    ...(hash && { hash }),
+    linkedAt: Date.now(),
+    hash: hash,
   };
 
   await fs.writeFile(filePath, JSON.stringify(enriched, null, 2), {
@@ -165,15 +172,18 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
 
   const projectSpinner = log.task("Linking project...").start();
   const variables = await safeCall(() =>
-    dbApi.variables.get(projectToLink._id, projectToLink.stage)
+    dbApi.projects.getVars(projectToLink._id as Id<"projects">, hash)
   )();
   if ("error" in variables) throw new Error(variables.error);
+  if (!variables.changed) {
+    throw new Error("No changes in environment file. Nothing to link.");
+  }
 
   const teamService = new TeamService(
     team,
     token.userId as unknown as Id<"users">
   );
-  const decryptedVariables = variables.map((v) => ({
+  const decryptedVariables = variables.vars.map((v) => ({
     name: v.name.toUpperCase(),
     value: teamService.decryptVariable(v.value),
   }));
@@ -198,21 +208,21 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
   await writeEnvFile(envFilePath, merged);
   const hash = await getEnvFileHash(envFilePath);
   await writeProjectsDir(projectToLink, hash);
-  // await recordAudit({
-  //   timestamp: Date.now(),
-  //   project: projectToLink.name,
-  //   file: envFilePath,
-  //   vars: Object.fromEntries(
-  //     Object.entries(newVars).map(([k, v]) => {
-  //       const action = !(k in existing)
-  //         ? "added"
-  //         : merged[k] === v
-  //         ? "overridden"
-  //         : "kept";
-  //       return [k, { action, value: v }];
-  //     })
-  //   ),
-  // });
+  await recordAudit({
+    timestamp: Date.now(),
+    project: projectToLink.name,
+    file: envFilePath,
+    vars: Object.fromEntries(
+      Object.entries(newVars).map(([k, v]) => {
+        const action = !(k in newVars)
+          ? "added"
+          : merged[k] === v
+            ? "overridden"
+            : "kept";
+        return [k, { action, value: v }];
+      })
+    ),
+  });
 
   projectSpinner.succeed("Project linked successfully!");
   log.success(`Run ${chalk.bold("envkit sync")} to sync variables`);

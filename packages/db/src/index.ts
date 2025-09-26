@@ -1,8 +1,6 @@
-import { addVars } from "convex/projects.js";
 import { api } from "../convex/_generated/api.js";
 import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
-// import { env } from "./env.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -108,6 +106,17 @@ const dbApi = {
     },
   },
   projects: {
+    getVars: async (
+      projectId: Id<"projects">,
+      localHash: string,
+      branch?: string
+    ) => {
+      return await convex.query(api.projects.getVars, {
+        projectId,
+        branch,
+        localHash,
+      });
+    },
     addVars: async (
       projectId: Id<"projects">,
       callerId: Id<"users">,
@@ -165,15 +174,6 @@ const dbApi = {
     },
   },
   variables: {
-    get: async (projectId: Id<"projects">, branch?: string) => {
-      return await convex.query(api.variables.get, { projectId, branch });
-    },
-    getProjectAndVars: async (projectId: Id<"projects">, branch?: string) => {
-      return await convex.query(api.variables.getProjectAndVars, {
-        projectId,
-        branch,
-      });
-    },
     create: async (
       projectId: Id<"projects">,
       name: string,

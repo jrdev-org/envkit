@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { dbApi, safeCall } from "@envkit/db";
 import { Id } from "@envkit/db/env";
+import { runAuth } from "@/commads/auth.js";
 
 export interface AuthToken {
   token: string;
@@ -17,10 +18,15 @@ export interface AuthToken {
 }
 
 export async function requireAuthToken() {
-  const token = await getStoredAuthToken();
+  let token = await getStoredAuthToken();
   if (!token) {
     log.info("No auth token found, please login!");
-    process.exit(0);
+    await runAuth();
+    token = await getStoredAuthToken();
+    if (!token) {
+      log.error("No auth token found, please login!");
+      process.exit(1);
+    }
   }
   return token;
 }
