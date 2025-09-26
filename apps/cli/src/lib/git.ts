@@ -1,8 +1,9 @@
 import { readFile, appendFile, access, writeFile } from "node:fs/promises";
-import { GITIGNORE_FILE } from "@/constants.js";
 import { log } from "./logger.js";
+import path from "node:path";
 
 export async function addToGitignore() {
+  const GITIGNORE_FILE = path.join(process.cwd(), ".gitignore");
   const entry =
     "\n# envkit local workspace data (linked project metadata and user env files)\n.envkit/*\n.env.local\n";
 
