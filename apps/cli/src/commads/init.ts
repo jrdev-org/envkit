@@ -94,12 +94,9 @@ export async function resolveConflicts(
 
 export async function writeEnvFile(
   filePath: string,
-  vars: Record<string, string>
+  vars: { name: string; value: string }[]
 ) {
-  const content =
-    Object.entries(vars)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("\n") + "\n";
+  const content = vars.map((v) => `${v.name}=${v.value}`).join("\n") + "\n";
   await fs.writeFile(filePath, content, { encoding: "utf-8" });
 }
 
@@ -206,7 +203,8 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
   };
 
   const merged = await resolveConflicts(envFilePath, newVars);
-  await writeEnvFile(envFilePath, merged);
+  const vars = Object.entries(merged).map(([k, v]) => ({ name: k, value: v }));
+  await writeEnvFile(envFilePath, vars);
   const hash = await getEnvFileHash(envFilePath);
   await writeProjectsDir(projectToLink, hash);
   await recordAudit({
@@ -280,7 +278,8 @@ async function createProject(workDir: string, teams: Team[]) {
   };
 
   const merged = await resolveConflicts(envFilePath, newVars);
-  await writeEnvFile(envFilePath, merged);
+  const vars = Object.entries(merged).map(([k, v]) => ({ name: k, value: v }));
+  await writeEnvFile(envFilePath, vars);
   const hash = await getEnvFileHash(envFilePath);
   await writeProjectsDir(newProject, hash);
   await recordAudit({

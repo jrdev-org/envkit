@@ -2,7 +2,8 @@
 import { Command } from "commander";
 import { authCmd, logoutCmd, whoamiCmd } from "./commads/auth.js";
 import { initCmd } from "./commads/init.js";
-import { pullCmd, pushCmd, syncCmd } from "./commads/actions.js";
+import { getCmd, pullCmd, pushCmd, syncCmd } from "./commads/actions.js";
+import { log } from "./lib/logger.js";
 
 // SIGINT handler
 process.on("SIGINT", () => {
@@ -19,8 +20,9 @@ process.on("SIGTERM", () => {
 const program = new Command("envkit")
   .description("Envkit CLI")
   .version("0.0.1")
-  .action(() => {
-    console.log("Hello World");
+  .action(async () => {
+    // TODO: Display the version and help message
+    log.info("Welcome to the Envkit CLI!");
     process.exit(0);
   });
 
@@ -31,4 +33,5 @@ program.addCommand(initCmd);
 program.addCommand(pushCmd);
 program.addCommand(pullCmd);
 program.addCommand(syncCmd);
+program.addCommand(getCmd);
 program.parse(process.argv);
