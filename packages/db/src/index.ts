@@ -2,7 +2,9 @@ import { api } from "../convex/_generated/api.js";
 import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({
+  path: process.cwd() + "/.env.local",
+});
 
 export const convex = new ConvexHttpClient(process.env.CONVEX_URL!);
 
@@ -129,6 +131,30 @@ const dbApi = {
         projectId,
         callerId,
         vars,
+      });
+    },
+    setVar: async (
+      projectId: Id<"projects">,
+      callerId: Id<"users">,
+      name: string,
+      value: string
+    ) => {
+      return await convex.mutation(api.projects.setVar, {
+        projectId,
+        callerId,
+        name,
+        value,
+      });
+    },
+    deleteVar: async (
+      projectId: Id<"projects">,
+      callerId: Id<"users">,
+      name: string
+    ) => {
+      return await convex.mutation(api.projects.deleteVar, {
+        projectId,
+        callerId,
+        name,
       });
     },
     create: async (name: string, stage: string, teamId: Id<"teams">) => {

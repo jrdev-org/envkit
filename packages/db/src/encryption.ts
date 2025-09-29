@@ -62,6 +62,16 @@ export class VariableEncryption {
    */
   static decryptVariable(encodedData: string, userSalt: string): string {
     try {
+      // What went wrong:
+      // The `encodedData` can be an empty string if a variable was "deleted"
+      // by setting its value to an empty string. An empty string is not valid
+      // base64 and will cause Buffer.from to return an empty buffer.
+      // JSON.parse('') then throws an "Unexpected end of JSON input" error.
+      // The fix is to check for an empty or null `encodedData` and return an
+      // empty string, which is the logical value for a deleted or empty variable.
+      if (!encodedData) {
+        return "";
+      }
       const decoded = Buffer.from(encodedData, "base64").toString("utf8");
       const payload = JSON.parse(decoded);
 

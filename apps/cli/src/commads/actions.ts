@@ -9,10 +9,10 @@
 // commands.ts
 
 import { PROJECTS_DIR } from "@/constants.js";
-import { requireAuthToken } from "@/lib/auth.js";
+import { AuthToken, requireAuthToken } from "@/lib/auth.js";
 import { log } from "@/lib/logger.js";
 import chalk from "chalk";
-import { Command } from "commander";
+import { Command, program } from "commander";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -27,6 +27,7 @@ import { confirm, select } from "@inquirer/prompts";
 import { dbApi, safeCall } from "@envkit/db";
 import { TeamService } from "@envkit/db/encryption";
 import { type Id } from "@envkit/db/env";
+import { recordAudit } from "@/lib/audit.js";
 
 export async function encryptVariable(
   teamId: Id<"teams">,
@@ -374,7 +375,8 @@ export async function runPull(stage?: string) {
   }
 
   await writeEnvFile(envFile, decryptedVariables);
-  await updateProjectsDir(linkedProject, variables.hash);
+  const newHash = await getEnvFileHash(envFile);
+  await updateProjectsDir(linkedProject, newHash);
 
   pullSpinner.succeed("Variables pulled successfully!");
   log.success(`Variables saved to ${envFile}`);
@@ -444,17 +446,16 @@ export const syncCmd = new Command("sync")
     const serverProject = await safeCall(() =>
       dbApi.projects.get(linkedProject._id)
     )();
+    if ("error" in serverProject) {
+      syncSpinner.fail("Error fetching sync state!");
+      throw new Error(serverProject.error);
+    }
     const serverVars = await safeCall(() =>
       dbApi.projects.getVars(linkedProject._id, linkedProject.hash)
     )();
-
-    if ("error" in serverProject || "error" in serverVars) {
+    if ("error" in serverVars) {
       syncSpinner.fail("Error fetching sync state!");
-      throw new Error(
-        (serverProject as any)?.error ||
-          (serverVars as any)?.error ||
-          "Unknown error"
-      );
+      throw new Error(serverVars.error);
     }
 
     const serverHash = serverVars.hash;
@@ -558,3 +559,218 @@ export const getCmd = new Command("get")
   .argument("<key>", "Variable key")
   .argument("[stage]", "Stage to get from e.g dev/prod")
   .action(runGet);
+
+// TODO: Debug set command
+
+export async function runSet(
+  key: string,
+  value: string,
+  token: AuthToken,
+  stage?: string,
+  allowOverride?: boolean
+) {
+  const projectName = process.cwd().split("/").pop();
+  let confirmSet = allowOverride;
+
+  if (!projectName) {
+    log.warn("Please run this command from the root of your project");
+    process.exit(1);
+  }
+  const linkedProject = await getLinkedProject(projectName, stage);
+  const envFile = await ensureEnvLocal();
+  let variables = await loadEnvFile(envFile);
+  const existing = Object.keys(variables)
+    .filter((k) => k in variables)
+    .find((v) => v === key);
+
+  if (existing) {
+    const existingValue = variables[existing];
+    log.debug(
+      `Found value for ${chalk.bold(key)}: ${existingValue.slice(0, 10)}...`
+    );
+    if (existingValue === value) {
+      log.info("No changes in environment file. Nothing to set.");
+      process.exit(0);
+    }
+    if (!confirmSet) {
+      confirmSet = await confirm({
+        message: `Setting the new value for ${chalk.bold(key)}. This will override the existing value. Do you want to proceed?`,
+        default: true,
+      });
+    }
+    if (!confirmSet) {
+      log.info("Aborting...");
+      process.exit(1);
+    }
+    const deleteSpinner = log.task(`Setting variable...`).start();
+    variables[existing] = value;
+    await writeEnvFile(
+      envFile,
+      Object.entries(variables).map(([k, v]) => ({ name: k, value: v }))
+    );
+    await recordAudit({
+      timestamp: Date.now(),
+      project: projectName,
+      file: envFile,
+      vars: { [key]: { action: "overridden", value: value } },
+    });
+    // update on the cloud
+    const res = await safeCall(
+      async () =>
+        await dbApi.projects.setVar(
+          linkedProject._id,
+          token.userId as unknown as Id<"users">,
+          key,
+          value
+        )
+    )();
+    if ("error" in res) {
+      deleteSpinner.fail("Error setting variable!");
+      throw new Error(res.error);
+    }
+    const hash = await getEnvFileHash(envFile);
+    await updateProjectsDir(linkedProject, hash);
+    if (res.updated) deleteSpinner.succeed("Variable updated successfully!");
+    else deleteSpinner.succeed("Variable set successfully!");
+  } else {
+    const setSpinner = log.task(`Setting variable...`).start();
+    // update on the cloud first
+    const res = await safeCall(
+      async () =>
+        await dbApi.projects.setVar(
+          linkedProject._id,
+          token.userId as unknown as Id<"users">,
+          key,
+          value
+        )
+    )();
+    if ("error" in res) {
+      setSpinner.fail("Error setting variable!");
+      throw new Error(res.error);
+    }
+    // Update the local variable
+    variables[key] = value;
+    await writeEnvFile(
+      envFile,
+      Object.entries(variables).map(([k, v]) => ({ name: k, value: v }))
+    );
+    await recordAudit({
+      timestamp: Date.now(),
+      project: projectName,
+      file: envFile,
+      vars: { [key]: { action: "added", value: value } },
+    });
+
+    const hash = await getEnvFileHash(envFile);
+    await updateProjectsDir(linkedProject, hash);
+    setSpinner.succeed("Variable set successfully!");
+  }
+}
+
+export const setCmd = new Command("set")
+  .description("Create or update a single variable")
+  .argument("<key>", "the variable name")
+  .argument("<value>", "the value of the variable")
+  .action(async (key: string, value: string) => {
+    const token = await requireAuthToken();
+    await runSet(key, value, token);
+    process.exit(0);
+  });
+
+export async function runDelete(
+  key: string,
+  allowOverride?: boolean,
+  stage?: string
+) {
+  const token = await requireAuthToken();
+  const projectName = process.cwd().split("/").pop();
+  if (!projectName) {
+    log.warn("Please run this command from the root of your project");
+    process.exit(1);
+  }
+  let confirmation = allowOverride;
+  const linkedProject = await getLinkedProject(projectName, stage);
+  const envFile = await ensureEnvLocal();
+  let variables = await loadEnvFile(envFile);
+  const varsArray = Object.entries(variables).map(([k, v]) => {
+    return { name: k, value: v };
+  });
+  const existing = Object.keys(variables)
+    .filter((k) => k in variables)
+    .find((v) => v === key);
+
+  if (existing) {
+    if (!allowOverride) {
+      confirmation = await confirm({
+        message:
+          "This will delete the variable both from the cloud and locally. Do you want to proceed?",
+        default: true,
+      });
+    }
+    if (!confirmation) {
+      log.info("Aborting...");
+      process.exit(0);
+    }
+    const deleteSpinner = log.task(`Deleting variable...`).start();
+
+    try {
+      // update on the cloud first
+      const res = await safeCall(
+        async () =>
+          await dbApi.projects.deleteVar(
+            linkedProject._id,
+            token.userId as unknown as Id<"users">,
+            key
+          )
+      )();
+      if ("error" in res) {
+        deleteSpinner.fail("Error deleting variable!");
+        throw new Error(res.error);
+      }
+
+      // update local file after cloud confirms
+      await writeEnvFile(
+        envFile,
+        varsArray.filter((v) => v.name !== key)
+      );
+      await recordAudit({
+        timestamp: Date.now(),
+        project: projectName,
+        file: envFile,
+        vars: {
+          [key]: { action: "overridden", value: "deleted" },
+        },
+      });
+
+      const hash = await getEnvFileHash(envFile);
+      await updateProjectsDir(res, hash);
+
+      deleteSpinner.succeed("Variable deleted successfully!");
+      process.exit(0);
+    } catch (e) {
+      deleteSpinner.fail("Error deleting variable!");
+      log.error((e as Error).message);
+      process.exit(1);
+    }
+  }
+  log.error(`No variable named ${key} found in ${envFile}`);
+  process.exit(1);
+}
+
+export const deleteCmd = new Command("delete")
+  .description("Delete a single variable")
+  .argument("<key>", "the variable name")
+  .argument("[stage]", "Stage to get from e.g dev/prod")
+  .option("-a, --allow-override", "Skip confirmation prompt")
+  .action(async (key, stage, options) => {
+    await runDelete(key, options.allowOverride, stage);
+  });
+
+export const deleteAllCmd = new Command("delete-all")
+  .description("Delete all variables")
+  .action(async () => {
+    log.debug(
+      `Unlink your project by running ${chalk.bold("envkit unlink")} to delete all variables`
+    );
+    process.exit(0);
+  });

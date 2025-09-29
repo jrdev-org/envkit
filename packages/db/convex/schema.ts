@@ -83,6 +83,7 @@ export default defineSchema({
     value: v.string(), // encrypted
     branch: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("users")),
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])

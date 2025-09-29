@@ -143,6 +143,169 @@ export const addVars = mutation({
   },
 });
 
+export const setVar = mutation({
+  args: {
+    projectId: v.id("projects"),
+    callerId: v.id("users"),
+    name: v.string(),
+    value: v.string(),
+  },
+  handler: async (ctx, { projectId, callerId, name, value }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project || project.deletedAt) {
+      throw new Error("Project not found");
+    }
+
+    // Authorization check
+    const caller = await ctx.db.get(callerId);
+    if (!caller) {
+      throw new Error("User not found");
+    }
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", caller._id)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .filter((q) => q.neq(q.field("role"), "viewer"))
+      .first();
+
+    if (!teamMember) {
+      throw new Error("You are not authorized to update this project");
+    }
+
+    // Check if variable exists
+    const existing = await ctx.db
+      .query("variables")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .filter((q) => q.eq(q.field("name"), name))
+      .first();
+
+    const now = Date.now();
+    // TODO: Implement a way to store the old value for auditing and blame
+    if (existing) {
+      // check if the value has changed
+      if (existing.value === value) {
+        return { updated: false, updatedProject: project };
+      }
+
+      // Update existing variable
+      await ctx.db.patch(existing._id, {
+        value,
+        updatedBy: caller._id,
+        updatedAt: now,
+      });
+
+      // update variable summary
+      const updatedSummary = [];
+      for (const v of project.variableSummary) {
+        updatedSummary.push(
+          v.name === name ? { name: name, updatedAt: now } : v
+        );
+      }
+      await ctx.db.patch(project._id, {
+        variableSummary: updatedSummary,
+        lastAction: `updated by ${caller.name}`,
+        updatedAt: now,
+      });
+      const updatedProject = await ctx.db.get(project._id);
+      if (!updatedProject) throw new Error("Project not found");
+
+      return { updated: true, updatedProject };
+    } else {
+      await ctx.db.insert("variables", {
+        projectId: project._id,
+        name,
+        value,
+        updatedBy: caller._id,
+        updatedAt: now,
+      });
+
+      const updatedSummary = project.variableSummary;
+      // add the new variable to the summary
+      updatedSummary.push({ name: name, updatedAt: now });
+
+      await ctx.db.patch(project._id, {
+        variableSummary: updatedSummary,
+        lastAction: `updated by ${caller.name}`,
+        updatedAt: now,
+      });
+
+      const updatedProject = await ctx.db.get(project._id);
+      if (!updatedProject) throw new Error("Project not found");
+
+      return { updated: false, updatedProject };
+    }
+  },
+});
+
+export const deleteVar = mutation({
+  args: {
+    projectId: v.id("projects"),
+    callerId: v.id("users"),
+    name: v.string(),
+  },
+  handler: async (ctx, { projectId, callerId, name }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project || project.deletedAt) {
+      throw new Error("Project not found");
+    }
+    const caller = await ctx.db.get(callerId);
+    if (!caller) {
+      throw new Error("User not found");
+    }
+
+    // Authorization check
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", caller._id)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .filter((q) => q.neq(q.field("role"), "viewer"))
+      .first();
+
+    if (!teamMember) {
+      throw new Error("You are not authorized to update this project");
+    }
+
+    // Check if variable exists
+    const existing = await ctx.db
+      .query("variables")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .filter((q) => q.eq(q.field("name"), name))
+      .first();
+    if (!existing) {
+      throw new Error("Variable not found");
+    }
+
+    const now = Date.now();
+    // TODO: Implement a way to store the old value for auditing and blame
+    await ctx.db.patch(existing._id, {
+      deletedAt: now,
+      updatedBy: caller._id,
+      updatedAt: now,
+    });
+
+    // update variable summary
+    const updatedSummary = project.variableSummary.filter(
+      (v) => v.name !== name
+    );
+    await ctx.db.patch(project._id, {
+      variableSummary: updatedSummary,
+      lastAction: `deleted by ${caller.name}`,
+      updatedAt: now,
+    });
+
+    const updatedProject = await ctx.db.get(project._id);
+    if (!updatedProject) throw new Error("Project not found");
+
+    return updatedProject;
+  },
+});
+
 export const create = mutation({
   args: { name: v.string(), stage: v.string(), teamId: v.id("teams") },
   handler: async (ctx, args) => {
