@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { authCmd, logoutCmd, whoamiCmd } from "./commads/auth.js";
-import { initCmd } from "./commads/init.js";
+import { authCmd, logoutCmd, whoamiCmd } from "./commands/auth.js";
+import { initCmd } from "./commands/init.js";
 import {
   deleteAllCmd,
   deleteCmd,
@@ -10,9 +10,10 @@ import {
   pushCmd,
   setCmd,
   syncCmd,
-} from "./commads/actions.js";
+} from "./commands/actions.js";
 import { log } from "./lib/logger.js";
 import chalk from "chalk";
+import { unlinkCmd } from "./commands/projects.js";
 
 // SIGINT handler
 process.on("SIGINT", () => {
@@ -47,4 +48,5 @@ program.addCommand(getCmd);
 program.addCommand(setCmd);
 program.addCommand(deleteCmd);
 program.addCommand(deleteAllCmd);
+program.addCommand(unlinkCmd);
 program.parse(process.argv);

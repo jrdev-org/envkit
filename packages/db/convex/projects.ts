@@ -490,10 +490,14 @@ export const remove = mutation({
     }
 
     // fetch team membership for user
+    const caller = await ctx.db.get(userId);
+    if (!caller) {
+      throw new Error("User not found");
+    }
     const teamMember = await ctx.db
       .query("teamMembers")
       .withIndex("by_team_and_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+        q.eq("teamId", teamId).eq("userId", caller._id)
       )
       .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
@@ -512,7 +516,7 @@ export const remove = mutation({
 
     if (vars.length > 0 && !force) {
       throw new Error(
-        `Project has ${vars.length} variables. Re-run with force=true to delete.`
+        `Project has ${vars.length} variables. Re-run with the --force flag to delete them.`
       );
     }
 
@@ -520,13 +524,14 @@ export const remove = mutation({
     for (const vdoc of vars) {
       await ctx.db.patch(vdoc._id, {
         deletedAt: Date.now(),
+        updatedBy: caller._id,
       });
     }
 
     // Finally delete the project
     await ctx.db.patch(project._id, {
       deletedAt: Date.now(),
-      lastAction: "project_deleted",
+      lastAction: `project_deleted by ${caller.name}`,
     });
 
     return { success: true, project };

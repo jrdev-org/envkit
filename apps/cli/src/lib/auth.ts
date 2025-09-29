@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { dbApi, safeCall } from "@envkit/db";
 import { Id } from "@envkit/db/env";
-import { runAuth } from "@/commads/auth.js";
+import { runAuth } from "@/commands/auth.js";
 
 export interface AuthToken {
   token: string;

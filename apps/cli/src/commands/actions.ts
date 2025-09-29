@@ -156,23 +156,48 @@ export async function ensureEnvLocal() {
     );
 
     if (otherEnvFiles.length) {
-      const consolidated: Record<string, string> = {};
-      for (const file of otherEnvFiles) {
-        const vars = await loadEnvFile(file);
-        for (const [k, v] of Object.entries(vars)) {
-          if (!(k in consolidated)) consolidated[k] = v;
-        }
-      }
-      await writeEnvFile(
-        envFile,
-        Object.entries(consolidated).map(([k, v]) => ({
-          name: k,
-          value: v,
-        }))
-      );
       log.warn(
-        `A migration to ${chalk.bold(".env.local")} has been performed. Consolidated values from: ${otherEnvFiles.join(", ")}`
+        `Other environment files were found: ${otherEnvFiles.join(
+          ", "
+        )}. We recommend migrating to ${chalk.bold(".env.local")}.`
       );
+
+      const proceed = await confirm({
+        message: `Do you want to consolidate values from ${otherEnvFiles.length} files into ${chalk.bold(
+          ".env.local"
+        )}?`,
+        default: true,
+      });
+
+      if (proceed) {
+        const consolidated: Record<string, string> = {};
+        for (const file of otherEnvFiles) {
+          const vars = await loadEnvFile(file);
+          for (const [k, v] of Object.entries(vars)) {
+            if (!(k in consolidated)) consolidated[k] = v;
+          }
+        }
+
+        await writeEnvFile(
+          envFile,
+          Object.entries(consolidated).map(([k, v]) => ({
+            name: k,
+            value: v,
+          }))
+        );
+        log.warn(
+          `Migration complete. Values consolidated into ${chalk.bold(
+            ".env.local"
+          )}.`
+        );
+      } else {
+        await writeEnvFile(envFile, []);
+        log.info(
+          `Created empty ${chalk.bold(
+            ".env.local"
+          )}. Existing env files were left untouched.`
+        );
+      }
     } else {
       await writeEnvFile(envFile, []);
       log.info(`Created empty ${chalk.bold(".env.local")}`);
@@ -232,10 +257,6 @@ export async function runPush(stage?: string) {
   const envFile = await ensureEnvLocal();
 
   const currentHash = await getEnvFileHash(envFile);
-  if (linkedProject.hash && currentHash === linkedProject.hash) {
-    log.warn("No changes in environment file. Nothing to push.");
-    process.exit(0);
-  }
 
   const variables = await loadEnvFile(envFile);
   const pushSpinner = log
