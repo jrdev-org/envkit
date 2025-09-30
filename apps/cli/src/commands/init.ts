@@ -96,7 +96,15 @@ export async function writeEnvFile(
   filePath: string,
   vars: { name: string; value: string }[]
 ) {
-  const content = vars.map((v) => `${v.name}=${v.value}`).join("\n") + "\n";
+  const content = vars
+    .map((v) => {
+      const escaped = v.value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n');
+      return `${v.name}="${escaped}"`;
+    })
+    .join("\n") + "\n";
   await fs.writeFile(filePath, content, { encoding: "utf-8" });
 }
 
