@@ -132,6 +132,9 @@ export async function runAuth() {
       "run envkit pull, envkit push or envkit --help to get started!"
     );
 
+    // Clean up auth server
+    if (authServerStop) authServerStop();
+
     // Everything succeeded — return out of the handler (caller can exit if needed)
     return;
   } catch (err) {
