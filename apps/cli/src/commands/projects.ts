@@ -11,7 +11,7 @@ import { Id } from "@envkit/db/env";
 
 async function runUnlink(force?: boolean) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
+  const projectName = path.basename(process.cwd());
   if (!projectName) {
     log.warn("Please run this command from the root of your project");
     process.exit(1);
