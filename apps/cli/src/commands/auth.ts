@@ -71,16 +71,16 @@ export async function runAuth() {
     // register/update device
     try {
       const deviceState = await dbApi.devices.getById(deviceInfo.deviceId);
-      if (deviceState === "found") {
-        return;
-      }
       if (deviceState === "not_found") {
         const res = await dbApi.devices.register({
           userId: userId as Id<"users">,
           ...deviceInfo,
         });
-        if (res.updated) log.bold("Updated your device Info");
-        log.success("Device Info stored successfully");
+        if (res.updated) {
+          log.bold("Updated your device Info");
+        } else {
+          log.success("Device Info stored successfully");
+        }
       }
     } catch (e) {
       e instanceof Error
