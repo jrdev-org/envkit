@@ -213,43 +213,12 @@ export async function runPush(stage?: string) {
     process.exit(1);
   }
 
-  let linkedProjects = await getProjects(projectName);
-  if (!linkedProjects) {
-    log.warn(
-      `No linked projects found for ${projectName}! Running init now ...`
-    );
-    await runInit("create");
-    linkedProjects = await getProjects(projectName);
-    if (!linkedProjects) {
-      log.error("Init did not produce any linked project. Aborting.");
-      process.exit(1);
-    }
-  }
+  const linkedProject = await getLinkedProject(projectName, stage);
 
-  const stages =
-    linkedProjects.length > 1
-      ? linkedProjects.map((p) => p.split("-")[1])
-      : linkedProjects[0].split("-")[1];
-
-  const projectStage =
-    stage ??
-    (typeof stages === "string"
-      ? stages
-      : await select({
-          message: "What stage do you want to push to?",
-          choices: stages.map((s) => ({ name: s, value: s })),
-          loop: true,
-        }));
-
-  const linkedProject = await readLinkedProject(projectName, projectStage);
-  if (!linkedProject) {
-    log.warn(
-      `No linked projects found for ${projectName} and ${projectStage}! Please run ${chalk.bold(
-        "envkit init"
-      )} first.`
-    );
-    process.exit(1);
-  }
+  // REVIEW: enforce .env.local
+  const envFile = await ensureEnvLocal();
+  // …rest of runPush…
+}
 
   // REVIEW: enforce .env.local
   const envFile = await ensureEnvLocal();
