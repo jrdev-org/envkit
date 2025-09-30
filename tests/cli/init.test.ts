@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { loadEnvFile, getEnvFileHash } from "../../apps/cli/src/commads/init";
+import { loadEnvFile, getEnvFileHash } from "../../apps/cli/src/commands/init";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
