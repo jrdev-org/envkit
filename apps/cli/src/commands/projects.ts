@@ -11,6 +11,7 @@ import { getDeviceInfo, getOrCreateDeviceId } from "@/lib/device.js";
 import chalk from "chalk";
 import { getEnvFileHash, writeEnvFile, writeProjectsDir } from "./init.js";
 import { TeamService } from "@envkit/db/encryption";
+import clipboard from "clipboardy";
 
 export async function getProjectName() {
   const projectName = path.basename(process.cwd());
@@ -157,7 +158,8 @@ export const shareCmd = new Command("share")
         log.error(res.error);
         process.exit(1);
       }
-      log.success(`Share token created successfully!`);
+      await clipboard.write(res.token);
+      log.success(`Share token created successfully! Copied to clipboard.`);
       const now = Date.now();
       let expiresDisplay: string;
       const diff = res.expiresAt - now;
