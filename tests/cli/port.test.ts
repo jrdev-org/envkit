@@ -10,13 +10,16 @@ describe("pickAvailablePort", () => {
 
   it("should return a different port if the default one is in use", async () => {
     const usedPort = 52000;
-    const server = http.createServer().listen(usedPort);
+   const server = http.createServer();
+   await new Promise<void>((resolve) => {
+     server.listen(usedPort, resolve);
+   });
 
     try {
       const port = await pickAvailablePort();
       expect(port).not.toBe(usedPort);
     } finally {
-      server.close();
+     await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });
