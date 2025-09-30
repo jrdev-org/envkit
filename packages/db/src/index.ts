@@ -6,7 +6,10 @@ dotenv.config({
   path: process.cwd() + "/.env.local",
 });
 
-export const convex = new ConvexHttpClient(process.env.CONVEX_URL!);
+if (!process.env.CONVEX_URL) {
+  throw new Error("CONVEX_URL environment variable is required");
+}
+export const convex = new ConvexHttpClient(process.env.CONVEX_URL);
 
 type Ok<T> = { data: T };
 type Err = { error: string };
