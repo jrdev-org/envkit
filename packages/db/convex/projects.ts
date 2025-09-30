@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
 import { calculateVariablesHash } from "./variables.js";
+import { Doc } from "./_generated/dataModel.js";
+import { getHashFromToken, tokenAndHash } from "./helpers.js";
 
 export const getVars = query({
   args: {
@@ -528,6 +530,15 @@ export const remove = mutation({
       });
     }
 
+    // delete share tokens
+    const shareTokens = await ctx.db
+      .query("shareTokens")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .collect();
+    for (const shareToken of shareTokens) {
+      await ctx.db.delete(shareToken._id);
+    }
+
     // Finally delete the project
     await ctx.db.patch(project._id, {
       deletedAt: Date.now(),
@@ -556,5 +567,235 @@ export const getProjectAndTeamSalt = query({
       });
 
     return { project, teamSalt };
+  },
+});
+
+// --- Create Share Link ---
+export const createShareToken = mutation({
+  args: {
+    projectId: v.id("projects"),
+    callerId: v.id("users"),
+    allowLink: v.optional(v.boolean()), // default false (single-use)
+    expiresAt: v.number(), // how long the token is valid
+    singleUse: v.optional(v.boolean()), // default false (single-use)
+  },
+  handler: async (
+    ctx,
+    { projectId, callerId, allowLink, expiresAt, singleUse }
+  ) => {
+    const project = await ctx.db.get(projectId);
+    if (!project) throw new Error("Project not found");
+
+    const caller = await ctx.db.get(callerId);
+    if (!caller) {
+      throw new Error("User not found");
+    }
+
+    // Authorization check
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", caller._id)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .filter((q) => q.neq(q.field("role"), "viewer"))
+      .first();
+
+    if (!teamMember) {
+      throw new Error("You are not authorized to share this project!");
+    }
+
+    const now = Date.now();
+
+    const { token, tokenHash } = await tokenAndHash();
+    const shareLink = {
+      projectId: project._id,
+      createdBy: caller._id,
+      tokenHash,
+      allowLink: allowLink ?? false,
+      expiresAt,
+      createdAt: now,
+      singleUse: singleUse ?? false,
+    };
+
+    const id = await ctx.db.insert("shareTokens", shareLink);
+    const shareToken = await ctx.db.get(id);
+    if (!shareToken || !shareToken.tokenHash)
+      throw new Error("Share token not found");
+    return { token, expiresAt: shareToken.expiresAt };
+  },
+});
+
+// --- Consume Share Token ---
+export const consumeShareToken = mutation({
+  args: {
+    token: v.string(),
+    consumerDevice: v.string(),
+    consumerId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, { token, consumerDevice, consumerId }) => {
+    const tokenHash = await getHashFromToken(token);
+    const link = await ctx.db
+      .query("shareTokens")
+      .withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash))
+      .unique();
+
+    if (!link) throw new Error("Invalid or expired token");
+    let user: Doc<"users"> | null = null;
+    if (consumerId) {
+      user = await ctx.db.get(consumerId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+    }
+
+    const now = Date.now();
+    if (link.expiresAt < now) {
+      // Expired
+      await ctx.db.delete(link._id);
+      throw new Error("Token expired");
+    }
+
+    // Fetch project
+    const project = await ctx.db.get(link.projectId);
+    if (!project) throw new Error("Project not found");
+
+    // delete token if single-use
+    if (link.singleUse) {
+      await ctx.db.delete(link._id);
+    } else {
+      // Audit trail
+      const consumedByMessage = consumerId
+        ? `user ${consumerId} via ${consumerDevice}`
+        : `unknown user via ${consumerDevice}`;
+      await ctx.db.patch(link._id, {
+        usedAt: now,
+        consumedBy: consumedByMessage,
+        lastAccessedAt: now,
+      });
+    }
+
+    return {
+      project,
+      allowLink: link.allowLink,
+      variables: await ctx.db
+        .query("variables")
+        .withIndex("by_project", (q) => q.eq("projectId", project._id))
+        .filter((q) => q.eq(q.field("deletedAt"), undefined))
+        .collect(),
+    };
+  },
+});
+
+// --- List Share Tokens ---
+export const listShareTokens = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, { projectId, userId }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project) throw new Error("Project not found");
+
+    // Check authorization
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", userId)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .first();
+
+    if (!teamMember) {
+      throw new Error("Not authorized to view share tokens");
+    }
+
+    const tokens = await ctx.db
+      .query("shareTokens")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+
+    // Return formatted list
+    return tokens
+      .filter((t) => t.tokenHash) // Only active tokens
+      .map((t) => ({
+        id: t._id,
+        tokenPreview: t.tokenHash?.slice(0, 8) + "...", // First 8 chars of hash
+        createdBy: t.createdBy,
+        createdAt: t.createdAt,
+        expiresAt: t.expiresAt,
+        isExpired: t.expiresAt < Date.now(),
+        allowLink: t.allowLink ?? false,
+        usedAt: t.usedAt,
+        consumedBy: t.consumedBy,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt); // Newest first
+  },
+});
+
+// --- Revoke Share Token ---
+export const revokeShareToken = mutation({
+  args: {
+    tokenId: v.id("shareTokens"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, { tokenId, userId }) => {
+    const token = await ctx.db.get(tokenId);
+    if (!token) throw new Error("Token not found");
+
+    const project = await ctx.db.get(token.projectId);
+    if (!project) throw new Error("Project not found");
+
+    // Check authorization
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", userId)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .filter((q) => q.neq(q.field("role"), "viewer"))
+      .first();
+
+    if (!teamMember) {
+      throw new Error("Not authorized to revoke tokens");
+    }
+
+    await ctx.db.delete(token._id);
+
+    return { success: true };
+  },
+});
+
+/**
+ * Hard-delete expired or revoked share tokens.
+ * Returns { deleted: number }
+ */
+export const pruneExpiredShareTokens = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // Find expired or explicitly revoked tokens (only rows that are safe to delete)
+    const expiredOrRevoked = await ctx.db
+      .query("shareTokens")
+      .filter((q) => q.lt(q.field("expiresAt"), now))
+      .collect();
+
+    if (!expiredOrRevoked.length) {
+      return { deleted: 0 };
+    }
+
+    // Delete each candidate. We restrict deletion to items matching the criteria above.
+    let deleted = 0;
+    for (const t of expiredOrRevoked) {
+      try {
+        await ctx.db.delete(t._id);
+        deleted++;
+      } catch (e) {
+        // swallow individual delete errors to allow other deletes to continue
+      }
+    }
+
+    return { deleted };
   },
 });

@@ -19,8 +19,8 @@ import {
   getEnvFileHash,
   loadEnvFile,
   runInit,
-  updateProjectsDir,
   writeEnvFile,
+  writeProjectsDir,
   type LinkedProject,
 } from "./init.js";
 import { confirm, select } from "@inquirer/prompts";
@@ -28,6 +28,7 @@ import { dbApi, safeCall } from "@envkit/db";
 import { TeamService } from "@envkit/db/encryption";
 import { type Id } from "@envkit/db/env";
 import { recordAudit } from "@/lib/audit.js";
+import { getProjectName } from "./projects.js";
 
 export async function encryptVariable(
   teamId: Id<"teams">,
@@ -207,19 +208,9 @@ export async function ensureEnvLocal() {
 
 export async function runPush(stage?: string) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
 
   const linkedProject = await getLinkedProject(projectName, stage);
-
-  // REVIEW: enforce .env.local
-  const envFile = await ensureEnvLocal();
-  // …rest of runPush…
-}
-
   // REVIEW: enforce .env.local
   const envFile = await ensureEnvLocal();
 
@@ -240,10 +231,7 @@ export async function runPush(stage?: string) {
   }
 
   const encryptedVariables: { name: string; value: string }[] = [];
-  const teamService = new TeamService(
-    linkedProject.teamId,
-    token.userId as unknown as Id<"users">
-  );
+  const teamService = new TeamService(linkedProject.teamId, token.userId);
 
   await Promise.all(
     Object.entries(variables).map(async ([k, v]) => {
@@ -256,7 +244,7 @@ export async function runPush(stage?: string) {
     async () =>
       await dbApi.projects.addVars(
         linkedProject._id,
-        token.userId as unknown as Id<"users">,
+        token.userId,
         encryptedVariables
       )
   )();
@@ -266,7 +254,7 @@ export async function runPush(stage?: string) {
   }
 
   const newHash = await getEnvFileHash(envFile);
-  await updateProjectsDir(res.updatedProject, newHash);
+  await writeProjectsDir(res.updatedProject, newHash);
 
   pushSpinner.succeed(
     `Variables pushed successfully! ${res.additions.length} new, ${res.removals.length} removed, ${res.conflicts.length} modified.`
@@ -284,49 +272,8 @@ export const pushCmd = new Command("push")
 
 export async function runPull(stage?: string) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
-
-  let linkedProjects = await getProjects(projectName);
-  if (!linkedProjects) {
-    log.warn(
-      `No linked projects found for ${projectName}! Running init now ...`
-    );
-    await runInit("create");
-    linkedProjects = await getProjects(projectName);
-    if (!linkedProjects) {
-      log.error("Init did not produce any linked project. Aborting.");
-      process.exit(1);
-    }
-  }
-
-  const stages =
-    linkedProjects.length > 1
-      ? linkedProjects.map((p) => p.split("-")[1])
-      : linkedProjects[0].split("-")[1];
-
-  const projectStage =
-    stage ??
-    (typeof stages === "string"
-      ? stages
-      : await select({
-          message: "What stage do you want to pull from?",
-          choices: stages.map((s) => ({ name: s, value: s })),
-          loop: true,
-        }));
-
-  const linkedProject = await readLinkedProject(projectName, projectStage);
-  if (!linkedProject) {
-    log.warn(
-      `No linked projects found for ${projectName} and ${projectStage}! Please run ${chalk.bold(
-        "envkit init"
-      )} first.`
-    );
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
+  const linkedProject = await getLinkedProject(projectName, stage);
 
   const envFile = await ensureEnvLocal();
   const pullSpinner = log
@@ -352,10 +299,7 @@ export async function runPull(stage?: string) {
     process.exit(0);
   }
 
-  const teamService = new TeamService(
-    linkedProject.teamId,
-    token.userId as unknown as Id<"users">
-  );
+  const teamService = new TeamService(linkedProject.teamId, token.userId);
   const decryptedVariables: { name: string; value: string }[] = [];
   for (const v of variables.vars) {
     const decrypted = await teamService.decryptVariable(v.value);
@@ -364,7 +308,7 @@ export async function runPull(stage?: string) {
 
   await writeEnvFile(envFile, decryptedVariables);
   const newHash = await getEnvFileHash(envFile);
-  await updateProjectsDir(linkedProject, newHash);
+  await writeProjectsDir(linkedProject, newHash);
 
   pullSpinner.succeed("Variables pulled successfully!");
   log.success(`Variables saved to ${envFile}`);
@@ -383,50 +327,8 @@ export const syncCmd = new Command("sync")
   .description("Synchronize local and cloud variables")
   .argument("[stage]", "Stage to sync e.g dev/prod")
   .action(async function (stage?: string) {
-    const projectName = process.cwd().split("/").pop();
-    if (!projectName) {
-      log.warn("Please run this command from the root of your project");
-      process.exit(1);
-    }
-
-    let linkedProjects = await getProjects(projectName);
-    if (!linkedProjects) {
-      log.warn(
-        `No linked projects found for ${projectName}! Running init now ...`
-      );
-      await runInit("create");
-      linkedProjects = await getProjects(projectName);
-      if (!linkedProjects) {
-        log.error("Init did not produce any linked project. Aborting.");
-        process.exit(1);
-      }
-    }
-
-    const stages =
-      linkedProjects.length > 1
-        ? linkedProjects.map((p) => p.split("-")[1])
-        : linkedProjects[0].split("-")[1];
-
-    const projectStage =
-      stage ??
-      (typeof stages === "string"
-        ? stages
-        : await select({
-            message: "What stage do you want to sync?",
-            choices: stages.map((s) => ({ name: s, value: s })),
-            loop: true,
-          }));
-
-    const linkedProject = await readLinkedProject(projectName, projectStage);
-    if (!linkedProject) {
-      log.warn(
-        `No linked projects found for ${projectName} and ${projectStage}! Please run ${chalk.bold(
-          "envkit init"
-        )} first.`
-      );
-      process.exit(1);
-    }
-
+    const projectName = await getProjectName();
+    const linkedProject = await getLinkedProject(projectName, stage);
     const envFile = await ensureEnvLocal();
     const localHash = await getEnvFileHash(envFile);
 
@@ -498,11 +400,7 @@ export const syncCmd = new Command("sync")
 
 export async function runGet(key: string, stage?: string) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
   const linkedProject = await getLinkedProject(projectName, stage);
   const envFile = await ensureEnvLocal();
   let variables = await loadEnvFile(envFile);
@@ -557,13 +455,8 @@ export async function runSet(
   stage?: string,
   allowOverride?: boolean
 ) {
-  const projectName = process.cwd().split("/").pop();
+  const projectName = await getProjectName();
   let confirmSet = allowOverride;
-
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
   const linkedProject = await getLinkedProject(projectName, stage);
   const envFile = await ensureEnvLocal();
   let variables = await loadEnvFile(envFile);
@@ -605,19 +498,14 @@ export async function runSet(
     // update on the cloud
     const res = await safeCall(
       async () =>
-        await dbApi.projects.setVar(
-          linkedProject._id,
-          token.userId as unknown as Id<"users">,
-          key,
-          value
-        )
+        await dbApi.projects.setVar(linkedProject._id, token.userId, key, value)
     )();
     if ("error" in res) {
       deleteSpinner.fail("Error setting variable!");
       throw new Error(res.error);
     }
     const hash = await getEnvFileHash(envFile);
-    await updateProjectsDir(linkedProject, hash);
+    await writeProjectsDir(linkedProject, hash);
     if (res.updated) deleteSpinner.succeed("Variable updated successfully!");
     else deleteSpinner.succeed("Variable set successfully!");
   } else {
@@ -625,12 +513,7 @@ export async function runSet(
     // update on the cloud first
     const res = await safeCall(
       async () =>
-        await dbApi.projects.setVar(
-          linkedProject._id,
-          token.userId as unknown as Id<"users">,
-          key,
-          value
-        )
+        await dbApi.projects.setVar(linkedProject._id, token.userId, key, value)
     )();
     if ("error" in res) {
       setSpinner.fail("Error setting variable!");
@@ -650,7 +533,7 @@ export async function runSet(
     });
 
     const hash = await getEnvFileHash(envFile);
-    await updateProjectsDir(linkedProject, hash);
+    await writeProjectsDir(linkedProject, hash);
     setSpinner.succeed("Variable set successfully!");
   }
 }
@@ -671,11 +554,7 @@ export async function runDelete(
   stage?: string
 ) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
   let confirmation = allowOverride;
   const linkedProject = await getLinkedProject(projectName, stage);
   const envFile = await ensureEnvLocal();
@@ -705,11 +584,7 @@ export async function runDelete(
       // update on the cloud first
       const res = await safeCall(
         async () =>
-          await dbApi.projects.deleteVar(
-            linkedProject._id,
-            token.userId as unknown as Id<"users">,
-            key
-          )
+          await dbApi.projects.deleteVar(linkedProject._id, token.userId, key)
       )();
       if ("error" in res) {
         deleteSpinner.fail("Error deleting variable!");
@@ -731,7 +606,7 @@ export async function runDelete(
       });
 
       const hash = await getEnvFileHash(envFile);
-      await updateProjectsDir(res, hash);
+      await writeProjectsDir(res, hash);
 
       deleteSpinner.succeed("Variable deleted successfully!");
       process.exit(0);
@@ -752,13 +627,4 @@ export const deleteCmd = new Command("delete")
   .option("-a, --allow-override", "Skip confirmation prompt")
   .action(async (key, stage, options) => {
     await runDelete(key, options.allowOverride, stage);
-  });
-
-export const deleteAllCmd = new Command("delete-all")
-  .description("Delete all variables")
-  .action(async () => {
-    log.debug(
-      `Unlink your project by running ${chalk.bold("envkit unlink")} to delete all variables`
-    );
-    process.exit(0);
   });

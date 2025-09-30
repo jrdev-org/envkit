@@ -126,12 +126,7 @@ export class TeamService {
   }
 
   async createSalt(): Promise<string> {
-    // TODO: add a limit on the number of salts per team
     const { userId, team } = await this.getUserAndTeam();
-    const existing = await convex.query(api.salts.get, { teamId: team._id });
-    if (existing.length > 0) {
-      return existing[0].salt;
-    }
     const salt = VariableEncryption.generateSalt();
     await convex.mutation(api.salts.create, {
       teamId: team._id,
@@ -144,8 +139,8 @@ export class TeamService {
   async getSalt() {
     const { team } = await this.getUserAndTeam();
     const existing = await convex.query(api.salts.get, { teamId: team._id });
-    if (existing.length > 0) {
-      return existing[0].salt;
+    if (existing) {
+      return existing.salt;
     }
     return this.createSalt();
   }

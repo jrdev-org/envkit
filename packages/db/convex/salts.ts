@@ -11,7 +11,7 @@ export const get = query({
     return await ctx.db
       .query("salts")
       .withIndex("by_team", (q) => q.eq("teamId", team._id))
-      .collect();
+      .first();
   },
 });
 
@@ -29,6 +29,15 @@ export const create = mutation({
     if (team.ownerId !== caller._id) {
       throw new Error("Unauthorized! Caller is not the owner of the team");
     }
+
+    const existing = await ctx.db
+      .query("salts")
+      .withIndex("by_team", (q) => q.eq("teamId", team._id))
+      .first();
+    if (existing) {
+      throw new Error("Salt already exists");
+    }
+
     return await ctx.db.insert("salts", {
       teamId,
       salt,

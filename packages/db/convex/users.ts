@@ -1,12 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
+import { tokenAndHash } from "./helpers.js";
 
 export const create = mutation({
   args: {
     authId: v.string(),
     name: v.string(),
     email: v.string(),
-    salt: v.string(),
   },
   handler: async (ctx, args) => {
     const authId = args.authId.trim();
@@ -53,9 +53,10 @@ export const create = mutation({
     });
 
     // 4) create team salt
+    const { tokenHash: salt } = await tokenAndHash();
     await ctx.db.insert("salts", {
       teamId: newTeamId,
-      salt: args.salt,
+      salt: salt,
     });
 
     // 5 add user to team

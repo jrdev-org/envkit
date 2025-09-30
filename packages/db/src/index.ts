@@ -1,9 +1,10 @@
+import path from "path";
 import { api } from "../convex/_generated/api.js";
 import { type Id } from "../convex/_generated/dataModel.js";
 import { ConvexHttpClient } from "convex/browser";
 import dotenv from "dotenv";
 dotenv.config({
-  path: process.cwd() + "/.env.local",
+  path: path.join(process.cwd(), ".env.local"),
 });
 
 if (!process.env.CONVEX_URL) {
@@ -45,15 +46,9 @@ const dbApi = {
     get: async (authId: string) => {
       return await convex.query(api.users.get, { authId });
     },
-    create: async (
-      authId: string,
-      name: string,
-      email: string,
-      salt: string
-    ) => {
+    create: async (authId: string, name: string, email: string) => {
       const { newUserId, newTeamId } = await convex.mutation(api.users.create, {
         authId,
-        salt,
         name,
         email,
       });
@@ -201,18 +196,78 @@ const dbApi = {
         force,
       });
     },
+    createShareToken: async ({
+      projectId,
+      callerId,
+      allowLink,
+      expiresAt,
+      singleUse,
+    }: {
+      projectId: Id<"projects">;
+      callerId: Id<"users">;
+      allowLink: boolean;
+      expiresAt: number;
+      singleUse: boolean;
+    }) => {
+      return await convex.mutation(api.projects.createShareToken, {
+        projectId,
+        callerId,
+        allowLink,
+        expiresAt,
+        singleUse,
+      });
+    },
+    consumeShareToken: async ({
+      token,
+      consumerDevice,
+      consumerId,
+    }: {
+      token: string;
+      consumerDevice: string;
+      consumerId: Id<"users">;
+    }) => {
+      return await convex.mutation(api.projects.consumeShareToken, {
+        token,
+        consumerDevice,
+        consumerId,
+      });
+    },
+    listShareTokens: async ({
+      projectId,
+      userId,
+    }: {
+      projectId: Id<"projects">;
+      userId: Id<"users">;
+    }) => {
+      return await convex.query(api.projects.listShareTokens, {
+        projectId,
+        userId,
+      });
+    },
+    revokeShareToken: async ({
+      tokenId,
+      userId,
+    }: {
+      tokenId: Id<"shareTokens">;
+      userId: Id<"users">;
+    }) => {
+      return await convex.mutation(api.projects.revokeShareToken, {
+        tokenId,
+        userId,
+      });
+    },
   },
   variables: {
     create: async (
       projectId: Id<"projects">,
       name: string,
-      encrypted: string,
+      encryptedValue: string,
       branch?: string
     ) => {
       return await convex.mutation(api.variables.create, {
         projectId,
         name,
-        encryptedValue: encrypted,
+        encryptedValue,
         branch,
       });
     },

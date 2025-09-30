@@ -58,7 +58,6 @@ export default function AuthPage({
     // send userId to cli
     const dbUser = await createUser({
       authId: user.id,
-      salt: crypto.randomBytes(32).toString("hex"),
       name: user.fullName ?? user.firstName ?? "User",
       email: user.primaryEmailAddress?.emailAddress ?? "user@example.com",
     });

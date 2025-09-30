@@ -34,6 +34,9 @@ export class MessageEncryption {
    * Encrypt a message using the user's salt
    */
   static encryptMessage(message: string, userSalt: string): string {
+    if (!message || !userSalt) {
+      throw new Error("Message or userSalt is empty");
+    }
     try {
       const key = this.deriveKey(userSalt);
       const iv = crypto.randomBytes(this.IV_LENGTH);
@@ -59,6 +62,9 @@ export class MessageEncryption {
    * Decrypt a message using the user's salt
    */
   static decryptMessage(encryptedData: string, userSalt: string): string {
+    if (!encryptedData || !userSalt) {
+      throw new Error("Message or userSalt is empty");
+    }
     try {
       const parts = encryptedData.split(":");
       if (parts.length !== 3) {

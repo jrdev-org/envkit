@@ -11,6 +11,9 @@
     "./env": "./dist/src/env.js",
     "./encryption": "./dist/src/encryption.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",

@@ -77,6 +77,24 @@ export default defineSchema({
     .index("by_team", ["teamId"])
     .index("by_team_and_name_and_stage", ["teamId", "name", "stage"]),
 
+  // --- Project Share Tokens ---
+  shareTokens: defineTable({
+    projectId: v.id("projects"),
+    createdBy: v.id("users"), // who issued the share
+    tokenHash: v.string(), // cleared on use/expiry
+    allowLink: v.optional(v.boolean()), // whether recipients can persist
+    expiresAt: v.number(), // when the token expires
+    singleUse: v.boolean(), // whether to clear after use
+    usedAt: v.optional(v.number()),
+    consumedBy: v.optional(v.string()), // device or client identifier
+    createdAt: v.number(),
+    // helpful for auditing
+    lastAccessedAt: v.optional(v.number()),
+  })
+    .index("by_token_hash", ["tokenHash"]) // lookup until cleared
+    .index("by_project", ["projectId"])
+    .index("by_creator", ["createdBy"]),
+
   variables: defineTable({
     projectId: v.id("projects"),
     name: v.string(),

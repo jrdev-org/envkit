@@ -1,8 +1,9 @@
 import { dbApi, safeCall } from "@envkit/db";
 import dotenv from "dotenv";
+import path from "path";
 
 dotenv.config({
-  path: process.cwd() + "/.env.local",
+  path: path.join(process.cwd(), ".env.local"),
 });
 
 async function main() {

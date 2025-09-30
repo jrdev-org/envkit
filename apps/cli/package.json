@@ -8,6 +8,9 @@
   "bin": {
     "envkit": "dist/src/cli.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json"
