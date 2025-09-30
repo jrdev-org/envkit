@@ -131,9 +131,7 @@ async function getProjects(dir: string) {
 
 async function readLinkedProject(projectName: string, stage: string) {
   const projects = await fs.readdir(PROJECTS_DIR);
-  const project = projects.find(
-    (p) => p.includes(projectName) && p.includes(stage)
-  );
+  const project = projects.find((p) => p === `${projectName}-${stage}`);
   if (!project) return false;
 
   const projectData = await fs.readFile(path.join(PROJECTS_DIR, project), {
