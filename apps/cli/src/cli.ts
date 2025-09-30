@@ -27,11 +27,12 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
+import { CLI_VERSION } from "./constants.js";
+
 const program = new Command("envkit")
   .description("Envkit CLI")
-  .version("0.0.1")
+  .version(CLI_VERSION)
   .action(async () => {
-    // TODO: Display the version and help message
     log.info("Welcome to the Envkit CLI!");
     log.info(`Run ${chalk.bold("envkit --help")} to see available commands.`);
     process.exit(0);
