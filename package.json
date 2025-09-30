@@ -4,7 +4,7 @@
   "description": "Envkit is a secure environment variable management tool for modern teams. It allows you to store and manage environment variables in a secure and organized way, with built-in encryption and access control.",
   "type": "module",
   "scripts": {
-    "dev:web": "pnpm --filter @nvkit/web dev",
+    "dev:web": "pnpm --filter @envkit/web dev",
     "dev:cli": "pnpm --filter @envkit/cli dev",
     "dev:db": "pnpm --filter @envkit/db dev",
     "build": "pnpm -r build",
@@ -38,6 +38,7 @@
   "packageManager": "pnpm@10.14.0",
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "dotenv": "^17.2.2",
     "tsx": "^4.20.5",
     "vitest": "^3.2.4"
   }

@@ -17,6 +17,7 @@ import type * as cli from "../cli.js";
 import type * as devices from "../devices.js";
 import type * as helpers from "../helpers.js";
 import type * as projects from "../projects.js";
+import type * as salts from "../salts.js";
 import type * as teams from "../teams.js";
 import type * as users from "../users.js";
 import type * as variables from "../variables.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   devices: typeof devices;
   helpers: typeof helpers;
   projects: typeof projects;
+  salts: typeof salts;
   teams: typeof teams;
   users: typeof users;
   variables: typeof variables;

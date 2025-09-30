@@ -1,7 +1,6 @@
 // convex/cli.ts - Updated with proper auth flow
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server.js";
-import { tokenAndHash } from "./helpers.js";
 
 // Initialize CLI session (called when CLI starts auth process)
 export const init = mutation({
@@ -9,12 +8,19 @@ export const init = mutation({
     deviceId: v.string(),
     userId: v.id("users"),
     userAgent: v.optional(v.string()),
+    tempToken: v.string(),
   },
   async handler(ctx, args) {
+    //get the userId
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
     // Clean up any existing pending sessions for this device
     const existingSessions = await ctx.db
       .query("cliSessions")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .filter((q) => q.eq(q.field("deviceId"), args.deviceId))
       .filter((q) => q.eq(q.field("status"), "pending"))
       .collect();
@@ -26,17 +32,8 @@ export const init = mutation({
       });
     }
 
-    //get the userId
-    const user = await ctx.db.get(args.userId);
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Create new session
-    const { token, tokenHash } = await tokenAndHash();
-
     const sessionId = await ctx.db.insert("cliSessions", {
-      tokenHash,
+      tempToken: args.tempToken,
       deviceId: args.deviceId,
       userId: user._id,
       lastUsedAt: Date.now(),
@@ -46,7 +43,8 @@ export const init = mutation({
       expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes for auth completion
     });
 
-    return { sessionId, token };
+    const initialized = await ctx.db.get(sessionId);
+    return { initialized, tempToken: args.tempToken };
   },
 });
 
@@ -55,14 +53,16 @@ export const completeAuth = mutation({
   args: {
     sessionId: v.id("cliSessions"),
     userId: v.id("users"),
-    token: v.string(),
+    tempToken: v.string(),
+    permanentToken: v.string(),
   },
   async handler(ctx, args) {
-    const { token: _token, tokenHash } = await tokenAndHash();
     // Find pending session by deviceId
     const session = await ctx.db
       .query("cliSessions")
-      .withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash))
+      .withIndex("by_temp_token", (q) =>
+        q.eq("tempToken", args.tempToken.trim())
+      )
       .filter((q) => q.eq(q.field("status"), "pending"))
       .first();
 
@@ -73,6 +73,7 @@ export const completeAuth = mutation({
     }
 
     if (session.revokedAt) {
+      await ctx.db.delete(session._id);
       throw new Error("Session revoked. Please try again.");
     }
 
@@ -88,13 +89,10 @@ export const completeAuth = mutation({
       throw new Error("Session expired! Please try again.");
     }
 
-    // Generate new long-lived token for CLI usage
-    const { token: cliToken, tokenHash: cliTokenHash } = await tokenAndHash();
-
     await ctx.db.patch(session._id, {
       userId: session.userId,
-      tokenHash: cliTokenHash,
-      tempToken: cliToken,
+      tempToken: undefined,
+      permanentToken: args.permanentToken.trim(),
       status: "authenticated",
       lastUsedAt: Date.now(),
       expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
@@ -121,19 +119,24 @@ export const completeAuth = mutation({
     if (!authenticated) {
       throw new Error("Error authenticating CLI session. Please try again.");
     }
-    return authenticated;
+    return {
+      authenticated,
+      permanentToken: args.permanentToken,
+    };
   },
 });
 
 // Validate CLI token for authenticated requests
 export const validateToken = mutation({
   args: {
-    token: v.string(),
+    permanentToken: v.string(),
   },
-  async handler(ctx, { token }) {
+  async handler(ctx, { permanentToken }) {
     const session = await ctx.db
       .query("cliSessions")
-      .withIndex("by_token_hash", (q) => q.eq("tokenHash", token))
+      .withIndex("by_permanent_token", (q) =>
+        q.eq("permanentToken", permanentToken)
+      )
       .first();
 
     if (!session || session.status !== "authenticated") {
@@ -194,7 +197,12 @@ export const getSessionByDevice = query({
     deviceId: v.string(),
     userId: v.id("users"),
   },
-  async handler(ctx, { deviceId, userId }) {
+  async handler(
+    ctx,
+    { deviceId, userId }
+  ): Promise<{
+    status: "not_found" | "expired" | "pending" | "authenticated";
+  }> {
     const session = await ctx.db
       .query("cliSessions")
       .withIndex("by_user", (q) => q.eq("userId", userId))

@@ -13,7 +13,8 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
-      "@envkit/db": ["packages/db/index.ts"]
+      "@envkit/db": ["packages/db/src"],
+      "@envkit/utils": ["packages/utils/src"]
     },
     "rootDir": ".",
     "outDir": "dist",

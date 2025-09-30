@@ -7,7 +7,6 @@ export default defineSchema({
     authId: v.string(), // from auth provider
     name: v.string(),
     email: v.string(),
-    salt: v.string(), // user-specific salt
     tier: v.union(v.literal("free"), v.literal("pro")),
     updatedAt: v.number(),
   })
@@ -27,7 +26,6 @@ export default defineSchema({
   teams: defineTable({
     name: v.string(),
     ownerId: v.id("users"),
-    salt: v.string(),
     lastAction: v.optional(v.string()),
     state: v.union(
       v.literal("active"),
@@ -42,6 +40,11 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerId"])
     .index("by_owner_and_name", ["ownerId", "name"]),
+
+  salts: defineTable({
+    teamId: v.id("teams"),
+    salt: v.string(),
+  }).index("by_team", ["teamId"]),
 
   teamMembers: defineTable({
     teamId: v.id("teams"),
@@ -60,6 +63,13 @@ export default defineSchema({
     name: v.string(),
     stage: v.string(),
     teamId: v.id("teams"), // always owned by a team
+    // snapshot: just names and maybe last updated time
+    variableSummary: v.array(
+      v.object({
+        name: v.string(),
+        updatedAt: v.number(), // epoch millis
+      })
+    ),
     lastAction: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
     updatedAt: v.number(),
@@ -73,19 +83,11 @@ export default defineSchema({
     value: v.string(), // encrypted
     branch: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("users")),
+    updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_name", ["projectId", "name"]),
-
-  projectSnapshots: defineTable({
-    projectId: v.id("projects"),
-    branch: v.optional(v.string()),
-    lastUpdatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-    etag: v.string(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_branch", ["projectId", "branch"]),
 
   // --- Devices + CLI Sessions ---
   devices: defineTable({
@@ -108,7 +110,7 @@ export default defineSchema({
   cliSessions: defineTable({
     userId: v.id("users"),
     deviceId: v.string(),
-    tokenHash: v.string(),
+    permanentToken: v.optional(v.string()),
     tempToken: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -123,5 +125,6 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_deviceId", ["deviceId"])
-    .index("by_token_hash", ["tokenHash"]),
+    .index("by_temp_token", ["tempToken"])
+    .index("by_permanent_token", ["permanentToken"]),
 });

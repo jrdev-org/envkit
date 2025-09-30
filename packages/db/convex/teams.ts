@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
-import { tokenAndHash } from "./helpers.js";
 
 export const get = query({
   args: { id: v.id("users") },
@@ -80,7 +79,11 @@ export const getByName = query({
 });
 
 export const create = mutation({
-  args: { name: v.string(), ownerId: v.id("users") },
+  args: {
+    name: v.string(),
+    ownerId: v.id("users"),
+    salt: v.string(),
+  },
   handler: async (ctx, args) => {
     const owner = await ctx.db.get(args.ownerId);
     if (owner === null) {
@@ -99,11 +102,9 @@ export const create = mutation({
       throw new Error(`Team already exists.`);
     }
 
-    const { token: salt, tokenHash: _hash } = await tokenAndHash();
-    const team = await ctx.db.insert("teams", {
+    const newTeamId = await ctx.db.insert("teams", {
       name: args.name,
       ownerId: owner._id,
-      salt,
       type: "organization",
       maxMembers: owner.tier === "free" ? 5 : undefined,
       lastAction: "created",
@@ -111,7 +112,34 @@ export const create = mutation({
       updatedAt: Date.now(),
     });
 
-    return team;
+    // create team salt
+    await ctx.db.insert("salts", {
+      teamId: newTeamId,
+      salt: args.salt,
+    });
+
+    return await ctx.db.get(newTeamId);
+  },
+});
+
+export const getSalt = query({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    if (team === null) {
+      throw new Error(`Team not found.`);
+    }
+
+    return await ctx.db
+      .query("salts")
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
+      .first()
+      .then((row) => {
+        if (row === null) {
+          throw new Error(`Team salt not found.`);
+        }
+        return row.salt;
+      });
   },
 });
 
@@ -165,8 +193,13 @@ export const remove = mutation({
 });
 
 export const restore = mutation({
-  args: { id: v.id("teams") },
+  args: { id: v.id("teams"), ownerId: v.id("users") },
   handler: async (ctx, args) => {
+    const owner = await ctx.db.get(args.ownerId);
+    if (owner === null) {
+      throw new Error("Owner not found.");
+    }
+
     const team = await ctx.db.get(args.id);
     if (team === null) {
       throw new Error("Team not found.");
@@ -175,10 +208,14 @@ export const restore = mutation({
     if (team.state !== "deleted") {
       throw new Error("Team is not deleted.");
     }
+    if (team.ownerId !== owner._id) {
+      throw new Error("Not authorized.");
+    }
 
     await ctx.db.patch(team._id, {
       state: "active",
       lastAction: "team_restored",
+      deletedAt: undefined,
       updatedAt: Date.now(),
     });
 
@@ -197,9 +234,10 @@ export const getMembers = query({
     const members = await ctx.db
       .query("teamMembers")
       .withIndex("by_team", (q) => q.eq("teamId", args.id))
+      .filter((q) => q.eq("removedAt", undefined))
       .collect();
 
-    return members.filter((m) => m.removedAt === undefined);
+    return members;
   },
 });
 
@@ -233,20 +271,21 @@ export const addMember = mutation({
       .withIndex("by_team_and_user", (q) =>
         q.eq("teamId", team._id).eq("userId", existingUser._id)
       )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
 
-    if (existingMember !== null && existingMember.removedAt === undefined) {
+    if (existingMember) {
       throw new Error(`User is already ${existingMember.role}.`);
     }
 
     if (typeof team.maxMembers === "number") {
-      const activeCount = await ctx.db
+      const activeMembers = await ctx.db
         .query("teamMembers")
         .withIndex("by_team", (q) => q.eq("teamId", team._id))
-        .collect()
-        .then((rows) => rows.filter((m) => m.removedAt === undefined).length);
+        .filter((q) => q.eq(q.field("removedAt"), undefined))
+        .collect();
 
-      if (activeCount >= team.maxMembers) {
+      if (activeMembers.length >= team.maxMembers) {
         throw new Error("Team member limit reached");
       }
     }
@@ -281,6 +320,7 @@ export const removeMember = mutation({
         .withIndex("by_team_and_user", (q) =>
           q.eq("teamId", args.id).eq("userId", args.actingUserId)
         )
+        .filter((q) => q.eq(q.field("removedAt"), undefined))
         .first();
 
       if (!actingUserMember || actingUserMember.role !== "admin") {
@@ -293,6 +333,7 @@ export const removeMember = mutation({
       .withIndex("by_team_and_user", (q) =>
         q.eq("teamId", args.id).eq("userId", args.userId)
       )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
       .first();
 
     if (teamMember === null) {
