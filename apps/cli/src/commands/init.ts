@@ -116,7 +116,10 @@ export type Project = Awaited<ReturnType<typeof getProject>>;
 export type LinkedProject = Project & { linkedAt: number; hash: string };
 
 export async function writeProjectsDir(project: Project, hash: string) {
-  const filePath = path.join(PROJECTS_DIR, `${project.name}-${project.stage}`);
+  // sanitize inputs to prevent path traversal or invalid filenames
+  const safeName = project.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeStage = project.stage.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filePath = path.join(PROJECTS_DIR, `${safeName}-${safeStage}`);
 
   const enriched: LinkedProject = {
     ...project,
