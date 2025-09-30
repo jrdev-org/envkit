@@ -125,7 +125,7 @@ async function getProjects(dir: string) {
   const projects = await fs.readdir(PROJECTS_DIR);
   if (!projects.length) return false;
   return projects.filter((p) =>
-    p.includes(dir)
+    p.startsWith(`${dir}-`)
   ) as `projectName-projectStage`[];
 }
 
