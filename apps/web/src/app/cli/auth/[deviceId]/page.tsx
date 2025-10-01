@@ -7,10 +7,9 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { useUser, RedirectToSignIn, UserButton } from "@clerk/nextjs";
-import { api, useMutation, useQuery } from "@envkit/db/env";
+import { api, useMutation } from "@envkit/db/env";
 import { Terminal, AlertCircle, CheckCircle } from "lucide-react";
 import { use, useState } from "react";
-import * as crypto from "crypto";
 
 export default function AuthPage({
   params,

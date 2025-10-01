@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 // app/page.tsx
 export default function Page() {
   return (
@@ -65,18 +67,20 @@ export default function Page() {
         <p style={{ fontSize: "1rem", marginBottom: "1.5rem", color: "#bbb" }}>
           Environment Management Made Simple
         </p>
-        <button
-          style={{
-            border: "1px solid #0f0",
-            padding: "0.5rem 1rem",
-            fontSize: "0.9rem",
-            background: "black",
-            color: "#0f0",
-            cursor: "pointer",
-          }}
-        >
-          $ get-started
-        </button>
+        <Link href={"/dashboard"}>
+          <button
+            style={{
+              border: "1px solid #0f0",
+              padding: "0.5rem 1rem",
+              fontSize: "0.9rem",
+              background: "black",
+              color: "#0f0",
+              cursor: "pointer",
+            }}
+          >
+            $ get-started
+          </button>
+        </Link>
         <blockquote
           style={{
             margin: "2rem 0",
