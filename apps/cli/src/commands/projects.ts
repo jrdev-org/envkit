@@ -236,7 +236,11 @@ export const linkCmd = new Command("link")
       decryptedVariables.push({ name: v.name, value: decrypted });
     }
     await writeEnvFile(envFilePath, decryptedVariables);
-    const hash = await getEnvFileHash(envFilePath);
+    const hash = await getEnvFileHash(
+      envFilePath,
+      { ...project, linkedAt: Date.now(), hash: "" },
+      authToken.userId
+    );
     if (allowLink) {
       // this is a project with a linked token
       await writeProjectsDir(project, hash);

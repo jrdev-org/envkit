@@ -8,27 +8,37 @@ export const getVars = query({
   args: {
     projectId: v.id("projects"),
     localHash: v.string(), // New argument
+    callerId: v.id("users"),
     branch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Project doesn't exist");
+    const caller = await ctx.db.get(args.callerId);
+    if (!caller) {
+      throw new Error("User not found");
+    }
+    const teamMember = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team_and_user", (q) =>
+        q.eq("teamId", project.teamId).eq("userId", caller._id)
+      )
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .filter((q) => q.neq(q.field("role"), "viewer"))
+      .first();
+
+    if (!teamMember) {
+      throw new Error("You are not authorized to access this project");
+    }
 
     const branch = args.branch?.trim();
 
     // Calculate server-side hash
-    const serverHash = await calculateVariablesHash(
+    const { hash: serverHash, vars } = await calculateVariablesHash(
       ctx,
       args.projectId,
       branch
     );
-
-    const vars = await ctx.db
-      .query("variables")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .filter((q) => q.eq(q.field("branch"), branch))
-      .filter((q) => q.eq(q.field("deletedAt"), undefined))
-      .collect();
 
     // Compare with localHash if provided
     if (args.localHash.trim() === serverHash) {

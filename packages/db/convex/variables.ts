@@ -7,7 +7,7 @@ export async function calculateVariablesHash(
   ctx: QueryCtx, // Convex context
   projectId: Id<"projects">,
   branch?: string
-): Promise<string> {
+) {
   const vars = await ctx.db
     .query("variables")
     .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -16,7 +16,7 @@ export async function calculateVariablesHash(
     .collect();
 
   if (vars.length === 0) {
-    return "";
+    return { hash: "", vars: [] };
   }
 
   const canonical = vars
@@ -32,7 +32,7 @@ export async function calculateVariablesHash(
   const hashHex = hashArray
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return hashHex;
+  return { hash: hashHex, vars: vars };
 }
 
 // ------------------ Mutations ------------------

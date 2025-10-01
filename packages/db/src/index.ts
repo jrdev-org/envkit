@@ -106,14 +106,21 @@ const dbApi = {
     },
   },
   projects: {
-    getVars: async (
-      projectId: Id<"projects">,
-      localHash: string,
-      branch?: string
-    ) => {
+    getVars: async ({
+      projectId,
+      localHash,
+      callerId,
+      branch,
+    }: {
+      projectId: Id<"projects">;
+      localHash: string;
+      callerId: Id<"users">;
+      branch?: string;
+    }) => {
       return await convex.query(api.projects.getVars, {
         projectId,
         branch,
+        callerId,
         localHash,
       });
     },

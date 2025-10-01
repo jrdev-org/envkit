@@ -11,7 +11,7 @@ import { PROJECTS_DIR } from "@/constants.js";
 import { TeamService } from "@envkit/db/encryption";
 import dotenv from "dotenv";
 import { recordAudit } from "@/lib/audit.js";
-import { ensureEnvLocal } from "./actions.js";
+import { decryptVariable, ensureEnvLocal } from "./actions.js";
 import { getProjectName } from "./projects.js";
 
 export async function loadEnvFile(
@@ -25,15 +25,37 @@ export async function loadEnvFile(
   }
 }
 
-export async function getEnvFileHash(filePath: string): Promise<string> {
+export async function getEnvFileHash(
+  filePath: string,
+  linkedProject: LinkedProject,
+  callerId: Id<"users">
+): Promise<string> {
+  // calculate the hash for encrypted variables since that is what the server compares against
   const envVars = await loadEnvFile(filePath);
   if (Object.keys(envVars).length === 0) {
     return "";
   }
-  const canonical = Object.entries(envVars)
-    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-    .map(([key, value]) => `${key}=${value}`)
+  // get the variables in the correct order
+  const envVarsArray = Object.entries(envVars)
+    .map(([key, value]) => ({ name: key, value: value }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // ENCRYPT the variables (not decrypt!)
+  const teamService = new TeamService(linkedProject.teamId, callerId);
+  const encrypted = await Promise.all(
+    envVarsArray.map(async (v) => {
+      return {
+        name: v.name,
+        value: await teamService.encryptVariable(v.value), // Changed to encryptVariable
+      };
+    })
+  );
+
+  const canonical = encrypted
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((v) => `${v.name}=${v.value}`)
     .join("\n");
+
   const hashBuffer = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(canonical)
@@ -170,9 +192,17 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
 
   const projectSpinner = log.task("Linking project...").start();
   const envFilePath = path.join(workDir, ".env.local");
-  const currentHash = await getEnvFileHash(envFilePath);
+  const currentHash = await getEnvFileHash(
+    envFilePath,
+    { ...projectToLink, linkedAt: Date.now(), hash: "" },
+    token.userId
+  );
   const variables = await safeCall(() =>
-    dbApi.projects.getVars(projectToLink._id as Id<"projects">, currentHash)
+    dbApi.projects.getVars({
+      projectId: projectToLink._id,
+      callerId: token.userId,
+      localHash: currentHash,
+    })
   )();
   if ("error" in variables) throw new Error(variables.error);
   if (!variables.changed) {
@@ -194,7 +224,11 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
   const merged = await resolveConflicts(envFilePath, newVars);
   const vars = Object.entries(merged).map(([k, v]) => ({ name: k, value: v }));
   await writeEnvFile(envFilePath, vars);
-  const hash = await getEnvFileHash(envFilePath);
+  const hash = await getEnvFileHash(
+    envFilePath,
+    { ...projectToLink, linkedAt: Date.now(), hash: "" },
+    token.userId
+  );
   await writeProjectsDir(projectToLink, hash);
   await recordAudit({
     timestamp: Date.now(),
@@ -218,6 +252,7 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
 
 // create new project
 async function createProject(workDir: string, teams: Team[]) {
+  const token = await requireAuthToken();
   const detectedProjectName = await getProjectName();
   const projectName = await input({
     message: "What is your project name?",
@@ -270,8 +305,7 @@ async function createProject(workDir: string, teams: Team[]) {
   const merged = await resolveConflicts(envFilePath, newVars);
   const vars = Object.entries(merged).map(([k, v]) => ({ name: k, value: v }));
   await writeEnvFile(envFilePath, vars);
-  const hash = await getEnvFileHash(envFilePath);
-  await writeProjectsDir(newProject, hash);
+  await writeProjectsDir(newProject, "master");
   await recordAudit({
     timestamp: Date.now(),
     project: projectName,
