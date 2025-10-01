@@ -1,13 +1,3 @@
-// │
-// ├── push <environment>
-// ├── pull <environment>
-// ├── sync [environment]
-// ├── set <environment> <key> <value>
-// ├── get <environment> <key>
-// └── delete <environment> <key>
-
-// commands.ts
-
 import { PROJECTS_DIR } from "@/constants.js";
 import { AuthToken, requireAuthToken } from "@/lib/auth.js";
 import { log } from "@/lib/logger.js";
@@ -19,8 +9,8 @@ import {
   getEnvFileHash,
   loadEnvFile,
   runInit,
-  updateProjectsDir,
   writeEnvFile,
+  writeProjectsDir,
   type LinkedProject,
 } from "./init.js";
 import { confirm, select } from "@inquirer/prompts";
@@ -28,6 +18,7 @@ import { dbApi, safeCall } from "@envkit/db";
 import { TeamService } from "@envkit/db/encryption";
 import { type Id } from "@envkit/db/env";
 import { recordAudit } from "@/lib/audit.js";
+import { getProjectName } from "./projects.js";
 
 export async function encryptVariable(
   teamId: Id<"teams">,
@@ -67,12 +58,14 @@ export async function decryptVariable(
 export async function decryptVariables(
   teamId: Id<"teams">,
   callerid: Id<"users">,
-  values: string[]
+  values: { name: string; value: string }[]
 ) {
   const teamService = new TeamService(teamId, callerid);
-  const decrypted = await Promise.all(
-    values.map(async (v) => teamService.decryptVariable(v))
-  );
+  const decrypted = [];
+  for (const v of values) {
+    const decryptedValue = await teamService.decryptVariable(v.value);
+    decrypted.push({ name: v.name, value: decryptedValue });
+  }
   return decrypted;
 }
 
@@ -207,23 +200,17 @@ export async function ensureEnvLocal() {
 
 export async function runPush(stage?: string) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
 
   const linkedProject = await getLinkedProject(projectName, stage);
-
-  // REVIEW: enforce .env.local
-  const envFile = await ensureEnvLocal();
-  // …rest of runPush…
-}
-
   // REVIEW: enforce .env.local
   const envFile = await ensureEnvLocal();
 
-  const currentHash = await getEnvFileHash(envFile);
+  const currentHash = await getEnvFileHash(
+    envFile,
+    linkedProject,
+    token.userId
+  );
 
   const variables = await loadEnvFile(envFile);
   const pushSpinner = log
@@ -231,7 +218,12 @@ export async function runPush(stage?: string) {
     .start();
 
   const dbVars = await safeCall(
-    async () => await dbApi.projects.getVars(linkedProject._id, currentHash)
+    async () =>
+      await dbApi.projects.getVars({
+        localHash: currentHash,
+        callerId: token.userId,
+        projectId: linkedProject._id,
+      })
   )();
   if ("error" in dbVars) throw new Error(dbVars.error);
   if (!dbVars.changed) {
@@ -240,10 +232,7 @@ export async function runPush(stage?: string) {
   }
 
   const encryptedVariables: { name: string; value: string }[] = [];
-  const teamService = new TeamService(
-    linkedProject.teamId,
-    token.userId as unknown as Id<"users">
-  );
+  const teamService = new TeamService(linkedProject.teamId, token.userId);
 
   await Promise.all(
     Object.entries(variables).map(async ([k, v]) => {
@@ -256,7 +245,7 @@ export async function runPush(stage?: string) {
     async () =>
       await dbApi.projects.addVars(
         linkedProject._id,
-        token.userId as unknown as Id<"users">,
+        token.userId,
         encryptedVariables
       )
   )();
@@ -265,8 +254,8 @@ export async function runPush(stage?: string) {
     throw new Error(res?.error || "Unknown error");
   }
 
-  const newHash = await getEnvFileHash(envFile);
-  await updateProjectsDir(res.updatedProject, newHash);
+  const newHash = await getEnvFileHash(envFile, linkedProject, token.userId);
+  await writeProjectsDir(res.updatedProject, newHash);
 
   pushSpinner.succeed(
     `Variables pushed successfully! ${res.additions.length} new, ${res.removals.length} removed, ${res.conflicts.length} modified.`
@@ -284,49 +273,8 @@ export const pushCmd = new Command("push")
 
 export async function runPull(stage?: string) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
-
-  let linkedProjects = await getProjects(projectName);
-  if (!linkedProjects) {
-    log.warn(
-      `No linked projects found for ${projectName}! Running init now ...`
-    );
-    await runInit("create");
-    linkedProjects = await getProjects(projectName);
-    if (!linkedProjects) {
-      log.error("Init did not produce any linked project. Aborting.");
-      process.exit(1);
-    }
-  }
-
-  const stages =
-    linkedProjects.length > 1
-      ? linkedProjects.map((p) => p.split("-")[1])
-      : linkedProjects[0].split("-")[1];
-
-  const projectStage =
-    stage ??
-    (typeof stages === "string"
-      ? stages
-      : await select({
-          message: "What stage do you want to pull from?",
-          choices: stages.map((s) => ({ name: s, value: s })),
-          loop: true,
-        }));
-
-  const linkedProject = await readLinkedProject(projectName, projectStage);
-  if (!linkedProject) {
-    log.warn(
-      `No linked projects found for ${projectName} and ${projectStage}! Please run ${chalk.bold(
-        "envkit init"
-      )} first.`
-    );
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
+  const linkedProject = await getLinkedProject(projectName, stage);
 
   const envFile = await ensureEnvLocal();
   const pullSpinner = log
@@ -335,9 +283,17 @@ export async function runPull(stage?: string) {
     )
     .start();
 
-  const currentHash = await getEnvFileHash(envFile);
+  const currentHash = await getEnvFileHash(
+    envFile,
+    linkedProject,
+    token.userId
+  );
   const variables = await safeCall(async () =>
-    dbApi.projects.getVars(linkedProject._id, currentHash)
+    dbApi.projects.getVars({
+      localHash: currentHash,
+      callerId: token.userId,
+      projectId: linkedProject._id,
+    })
   )();
   if ("error" in variables && variables.error === "NO_CHANGES") {
     pullSpinner.succeed("Already up to date.");
@@ -352,10 +308,7 @@ export async function runPull(stage?: string) {
     process.exit(0);
   }
 
-  const teamService = new TeamService(
-    linkedProject.teamId,
-    token.userId as unknown as Id<"users">
-  );
+  const teamService = new TeamService(linkedProject.teamId, token.userId);
   const decryptedVariables: { name: string; value: string }[] = [];
   for (const v of variables.vars) {
     const decrypted = await teamService.decryptVariable(v.value);
@@ -363,8 +316,8 @@ export async function runPull(stage?: string) {
   }
 
   await writeEnvFile(envFile, decryptedVariables);
-  const newHash = await getEnvFileHash(envFile);
-  await updateProjectsDir(linkedProject, newHash);
+  const newHash = await getEnvFileHash(envFile, linkedProject, token.userId);
+  await writeProjectsDir(linkedProject, newHash);
 
   pullSpinner.succeed("Variables pulled successfully!");
   log.success(`Variables saved to ${envFile}`);
@@ -383,52 +336,15 @@ export const syncCmd = new Command("sync")
   .description("Synchronize local and cloud variables")
   .argument("[stage]", "Stage to sync e.g dev/prod")
   .action(async function (stage?: string) {
-    const projectName = process.cwd().split("/").pop();
-    if (!projectName) {
-      log.warn("Please run this command from the root of your project");
-      process.exit(1);
-    }
-
-    let linkedProjects = await getProjects(projectName);
-    if (!linkedProjects) {
-      log.warn(
-        `No linked projects found for ${projectName}! Running init now ...`
-      );
-      await runInit("create");
-      linkedProjects = await getProjects(projectName);
-      if (!linkedProjects) {
-        log.error("Init did not produce any linked project. Aborting.");
-        process.exit(1);
-      }
-    }
-
-    const stages =
-      linkedProjects.length > 1
-        ? linkedProjects.map((p) => p.split("-")[1])
-        : linkedProjects[0].split("-")[1];
-
-    const projectStage =
-      stage ??
-      (typeof stages === "string"
-        ? stages
-        : await select({
-            message: "What stage do you want to sync?",
-            choices: stages.map((s) => ({ name: s, value: s })),
-            loop: true,
-          }));
-
-    const linkedProject = await readLinkedProject(projectName, projectStage);
-    if (!linkedProject) {
-      log.warn(
-        `No linked projects found for ${projectName} and ${projectStage}! Please run ${chalk.bold(
-          "envkit init"
-        )} first.`
-      );
-      process.exit(1);
-    }
-
+    const token = await requireAuthToken();
+    const projectName = await getProjectName();
+    const linkedProject = await getLinkedProject(projectName, stage);
     const envFile = await ensureEnvLocal();
-    const localHash = await getEnvFileHash(envFile);
+    const localHash = await getEnvFileHash(
+      envFile,
+      linkedProject,
+      token.userId
+    );
 
     const syncSpinner = log.task(`Checking sync state...`).start();
     const serverProject = await safeCall(() =>
@@ -439,7 +355,11 @@ export const syncCmd = new Command("sync")
       throw new Error(serverProject.error);
     }
     const serverVars = await safeCall(() =>
-      dbApi.projects.getVars(linkedProject._id, linkedProject.hash)
+      dbApi.projects.getVars({
+        localHash,
+        callerId: token.userId,
+        projectId: linkedProject._id,
+      })
     )();
     if ("error" in serverVars) {
       syncSpinner.fail("Error fetching sync state!");
@@ -498,11 +418,7 @@ export const syncCmd = new Command("sync")
 
 export async function runGet(key: string, stage?: string) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
   const linkedProject = await getLinkedProject(projectName, stage);
   const envFile = await ensureEnvLocal();
   let variables = await loadEnvFile(envFile);
@@ -557,13 +473,8 @@ export async function runSet(
   stage?: string,
   allowOverride?: boolean
 ) {
-  const projectName = process.cwd().split("/").pop();
+  const projectName = await getProjectName();
   let confirmSet = allowOverride;
-
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
   const linkedProject = await getLinkedProject(projectName, stage);
   const envFile = await ensureEnvLocal();
   let variables = await loadEnvFile(envFile);
@@ -605,19 +516,14 @@ export async function runSet(
     // update on the cloud
     const res = await safeCall(
       async () =>
-        await dbApi.projects.setVar(
-          linkedProject._id,
-          token.userId as unknown as Id<"users">,
-          key,
-          value
-        )
+        await dbApi.projects.setVar(linkedProject._id, token.userId, key, value)
     )();
     if ("error" in res) {
       deleteSpinner.fail("Error setting variable!");
       throw new Error(res.error);
     }
-    const hash = await getEnvFileHash(envFile);
-    await updateProjectsDir(linkedProject, hash);
+    const hash = await getEnvFileHash(envFile, linkedProject, token.userId);
+    await writeProjectsDir(linkedProject, hash);
     if (res.updated) deleteSpinner.succeed("Variable updated successfully!");
     else deleteSpinner.succeed("Variable set successfully!");
   } else {
@@ -625,12 +531,7 @@ export async function runSet(
     // update on the cloud first
     const res = await safeCall(
       async () =>
-        await dbApi.projects.setVar(
-          linkedProject._id,
-          token.userId as unknown as Id<"users">,
-          key,
-          value
-        )
+        await dbApi.projects.setVar(linkedProject._id, token.userId, key, value)
     )();
     if ("error" in res) {
       setSpinner.fail("Error setting variable!");
@@ -649,8 +550,8 @@ export async function runSet(
       vars: { [key]: { action: "added", value: value } },
     });
 
-    const hash = await getEnvFileHash(envFile);
-    await updateProjectsDir(linkedProject, hash);
+    const hash = await getEnvFileHash(envFile, linkedProject, token.userId);
+    await writeProjectsDir(linkedProject, hash);
     setSpinner.succeed("Variable set successfully!");
   }
 }
@@ -671,11 +572,7 @@ export async function runDelete(
   stage?: string
 ) {
   const token = await requireAuthToken();
-  const projectName = process.cwd().split("/").pop();
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
+  const projectName = await getProjectName();
   let confirmation = allowOverride;
   const linkedProject = await getLinkedProject(projectName, stage);
   const envFile = await ensureEnvLocal();
@@ -705,11 +602,7 @@ export async function runDelete(
       // update on the cloud first
       const res = await safeCall(
         async () =>
-          await dbApi.projects.deleteVar(
-            linkedProject._id,
-            token.userId as unknown as Id<"users">,
-            key
-          )
+          await dbApi.projects.deleteVar(linkedProject._id, token.userId, key)
       )();
       if ("error" in res) {
         deleteSpinner.fail("Error deleting variable!");
@@ -730,8 +623,8 @@ export async function runDelete(
         },
       });
 
-      const hash = await getEnvFileHash(envFile);
-      await updateProjectsDir(res, hash);
+      const hash = await getEnvFileHash(envFile, linkedProject, token.userId);
+      await writeProjectsDir(res, hash);
 
       deleteSpinner.succeed("Variable deleted successfully!");
       process.exit(0);
@@ -754,11 +647,98 @@ export const deleteCmd = new Command("delete")
     await runDelete(key, options.allowOverride, stage);
   });
 
-export const deleteAllCmd = new Command("delete-all")
-  .description("Delete all variables")
-  .action(async () => {
-    log.debug(
-      `Unlink your project by running ${chalk.bold("envkit unlink")} to delete all variables`
+// --- status ---
+// shows current local vs server state without making changes
+export const statusCmd = new Command("status")
+  .description("Show the sync status of local vs cloud variables")
+  .argument("[env]", "Environment to check status for e.g dev/prod")
+  .action(async (env: string | undefined) => {
+    const token = await requireAuthToken();
+    const projectName = await getProjectName();
+    const linkedProject = await getLinkedProject(projectName, env);
+    const envFile = await ensureEnvLocal();
+    const localHash = await getEnvFileHash(
+      envFile,
+      linkedProject,
+      token.userId
     );
-    process.exit(0);
+    const res = await safeCall(async () =>
+      dbApi.projects.getVars({
+        localHash,
+        callerId: token.userId,
+        projectId: linkedProject._id,
+      })
+    )();
+
+    if ("error" in res) {
+      log.error(res.error);
+      process.exit(1);
+    }
+
+    log.info(`Project: ${linkedProject.name} (${linkedProject.stage})`);
+    log.info(`Local hash: ${localHash}`);
+    log.info(`Server hash: ${res.hash}`);
+    if (localHash === res.hash) {
+      log.success("Local and cloud are in sync.");
+    } else {
+      log.warn(
+        "Local and cloud are out of sync. Run `envkit diff` for details."
+      );
+    }
+  });
+
+// --- diff ---
+// shows which variables differ between local and cloud
+export const diffCmd = new Command("diff")
+  .description("Show the differences between local and cloud variables")
+  .argument("[env]", "Environment to diff e.g dev/prod")
+  .action(async (env: string | undefined) => {
+    const token = await requireAuthToken();
+    const projectName = await getProjectName();
+    const linkedProject = await getLinkedProject(projectName, env);
+    const localVars = await loadEnvFile(".env.local");
+    const localHash = await getEnvFileHash(
+      ".env.local",
+      linkedProject,
+      token.userId
+    );
+    const server = await safeCall(async () =>
+      dbApi.projects.getVars({
+        localHash,
+        callerId: token.userId,
+        projectId: linkedProject._id,
+      })
+    )();
+
+    if ("error" in server) {
+      log.error(server.error);
+      process.exit(1);
+    }
+
+    const serverVars = Object.fromEntries(
+      server.vars.map((v) => [v.name, v.value])
+    );
+
+    // Compare sets
+    const added = Object.keys(localVars).filter((k) => !(k in serverVars));
+    const removed = Object.keys(serverVars).filter((k) => !(k in localVars));
+    const changed = Object.keys(localVars).filter(
+      (k) => k in serverVars && localVars[k] !== serverVars[k]
+    );
+
+    if (!added.length && !removed.length && !changed.length) {
+      log.success("No differences between local and cloud.");
+      process.exit(0);
+    }
+
+    log.info("Differences between local and cloud:");
+    if (added.length) {
+      log.warn(`Locally added: ${added.join(", ")}`);
+    }
+    if (removed.length) {
+      log.warn(`Removed locally: ${removed.join(", ")}`);
+    }
+    if (changed.length) {
+      log.warn(`Changed values: ${changed.join(", ")}`);
+    }
   });

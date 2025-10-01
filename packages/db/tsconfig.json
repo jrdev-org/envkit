@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "convex/**/*.ts", "convex/**/*.js"],
+  "include": ["src/**/*.ts", "convex/**/*.ts"],
   "exclude": ["node_modules"],
   "compilerOptions": {
     "outDir": "dist",

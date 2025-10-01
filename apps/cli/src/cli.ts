@@ -3,7 +3,6 @@ import { Command } from "commander";
 import { authCmd, logoutCmd, whoamiCmd } from "./commands/auth.js";
 import { initCmd } from "./commands/init.js";
 import {
-  deleteAllCmd,
   deleteCmd,
   getCmd,
   pullCmd,
@@ -13,7 +12,7 @@ import {
 } from "./commands/actions.js";
 import { log } from "./lib/logger.js";
 import chalk from "chalk";
-import { unlinkCmd } from "./commands/projects.js";
+import { linkCmd, shareCmd, unlinkCmd } from "./commands/projects.js";
 
 // SIGINT handler
 process.on("SIGINT", () => {
@@ -48,6 +47,7 @@ program.addCommand(syncCmd);
 program.addCommand(getCmd);
 program.addCommand(setCmd);
 program.addCommand(deleteCmd);
-program.addCommand(deleteAllCmd);
 program.addCommand(unlinkCmd);
+program.addCommand(shareCmd);
+program.addCommand(linkCmd);
 program.parse(process.argv);

@@ -1,4 +1,5 @@
 # EnvKit
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/jrdev-org/envkit?utm_source=oss&utm_medium=github&utm_campaign=jrdev-org%2Fenvkit&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 EnvKit is a command-line interface (CLI) tool designed to manage environment variables for your projects, providing secure storage and synchronization across different environments and teams.
 

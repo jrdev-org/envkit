@@ -10,7 +10,7 @@ import { runAuth } from "@/commands/auth.js";
 
 export interface AuthToken {
   token: string;
-  userId: string;
+  userId: Id<"users">;
   deviceId: string;
   sessionId: string;
   expiresAt: number;
@@ -67,7 +67,7 @@ export async function revokeSesion(sessionId: string) {
     async () =>
       await dbApi.cli.revokeSession(
         sessionId as unknown as Id<"cliSessions">,
-        token.userId as unknown as Id<"users">
+        token.userId
       )
   )();
 

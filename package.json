@@ -16,6 +16,9 @@
     "test:db": "vitest run tests/db",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "keywords": [
     "envkit",
     "env",

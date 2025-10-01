@@ -8,6 +8,9 @@
   "bin": {
     "envkit": "dist/src/cli.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json"
@@ -27,6 +30,7 @@
     "@inquirer/prompts": "^7.8.6",
     "@t3-oss/env-core": "^0.13.8",
     "chalk": "^5.6.2",
+    "clipboardy": "^5.0.0",
     "commander": "^14.0.1",
     "detect-port": "^2.1.0",
     "dotenv": "^17.2.2",
