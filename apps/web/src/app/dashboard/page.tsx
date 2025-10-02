@@ -2,13 +2,12 @@
 
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import { Clock, Users, Cpu, Key, Terminal, Folder } from "lucide-react";
+import { Clock } from "lucide-react";
 import { toast } from "sonner";
 import { api, useQuery } from "@envkit/db/env";
 import { type Doc } from "@envkit/db/types";
-import { useState, useEffect } from "react";
-import LoadingSpinner from "@/components/spinner";
 import DashboardCard from "@/components/dashboard-card";
+import LoadingPage from "@/components/loading-page";
 
 export type Project = Doc<"projects">;
 export type User = Doc<"users">;
@@ -25,14 +24,9 @@ export default function DashboardPage() {
   const dbUser = useQuery(api.users.get, {
     authId: user ? user.id : "skip",
   }) as User | undefined;
-  if (!isLoaded)
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
+  if (!isLoaded) return <LoadingPage />;
   if (!isSignedIn) return <div>Not signed in</div>;
-  if (!dbUser) return <div>Loading user...</div>;
+  if (!dbUser) return <LoadingPage />;
   // Mock recent activities
   const recentActivities = [
     {

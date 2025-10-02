@@ -809,3 +809,32 @@ export const pruneExpiredShareTokens = mutation({
     return { deleted };
   },
 });
+
+export const listByUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User not found");
+    const userTeams = await ctx.db
+      .query("teams")
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+      .filter((q) => q.eq(q.field("state"), "active"))
+      .collect();
+    const personalProjects: Doc<"projects">[] = [];
+    const organizationProjects: Doc<"projects">[] = [];
+    for (const team of userTeams) {
+      const teamProjects = await ctx.db
+        .query("projects")
+        .withIndex("by_team", (q) => q.eq("teamId", team._id))
+        .filter((q) => q.eq(q.field("deletedAt"), undefined))
+        .collect();
+      if (team.type === "personal") {
+        personalProjects.push(...teamProjects);
+      } else {
+        organizationProjects.push(...teamProjects);
+      }
+    }
+
+    return { personalProjects, organizationProjects };
+  },
+});

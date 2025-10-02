@@ -356,3 +356,14 @@ export const removeMember = mutation({
     return team;
   },
 });
+
+export const getById = query({
+  args: { id: v.id("teams") },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.id);
+    if (team === null) {
+      throw new Error("Team not found");
+    }
+    return team;
+  },
+});
