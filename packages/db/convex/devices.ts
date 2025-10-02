@@ -151,3 +151,16 @@ export const listWithSessions = query({
     return devicesWithSessions;
   },
 });
+
+export const listByUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    const devices = await ctx.db
+      .query("devices")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    return devices;
+  },
+});

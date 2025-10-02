@@ -26,7 +26,9 @@ export default function Breadcrumbs() {
     <Breadcrumb>
       <BreadcrumbList className="flex items-center gap-1">
         <BreadcrumbItem>
-          <BreadcrumbLink href="/">Home</BreadcrumbLink>
+          <BreadcrumbLink href="/" className="font-semibold lowercase">
+            Envkit
+          </BreadcrumbLink>
         </BreadcrumbItem>
 
         {paths.map((p, i) => {

@@ -4,10 +4,35 @@ import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Clock, Users, Cpu, Key, Terminal, Folder } from "lucide-react";
 import { toast } from "sonner";
+import { api, useQuery } from "@envkit/db/env";
+import { type Doc } from "@envkit/db/types";
+import { useState, useEffect } from "react";
+import LoadingSpinner from "@/components/spinner";
+import DashboardCard from "@/components/dashboard-card";
+
+export type Project = Doc<"projects">;
+export type User = Doc<"users">;
+export type Device = Doc<"devices">;
+export type CliSession = Doc<"cliSessions">;
+export type Variable = Doc<"variables">;
+export type Salt = Doc<"salts">;
+export type Team = Doc<"teams">;
+export type ShareToken = Doc<"shareTokens">;
+export type TeamMember = Doc<"teamMembers">;
 
 export default function DashboardPage() {
   const { isLoaded, user, isSignedIn } = useUser();
-
+  const dbUser = useQuery(api.users.get, {
+    authId: user ? user.id : "skip",
+  }) as User | undefined;
+  if (!isLoaded)
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  if (!isSignedIn) return <div>Not signed in</div>;
+  if (!dbUser) return <div>Loading user...</div>;
   // Mock recent activities
   const recentActivities = [
     {
@@ -49,14 +74,11 @@ export default function DashboardPage() {
 
   // Mock stats
   const stats = [
-    { label: "Active Projects", value: "12" },
-    { label: "Team Members", value: "8" },
-    { label: "Devices", value: "5" },
-    { label: "CLI Sessions", value: "3" },
+    { label: "Projects Created This Month", value: 3 },
+    { label: "Active CLI Sessions", value: 2 },
+    { label: "Devices Registered This Week", value: 1 },
+    { label: "Variables Stored", value: 42 },
   ];
-
-  if (!isLoaded) return <div>Loading...</div>;
-  if (!isSignedIn) return <div>Not signed in</div>;
 
   return (
     <div className="min-h-screen bg-[#f9f9f9] py-8">
@@ -106,64 +128,11 @@ export default function DashboardPage() {
               Quick Access
             </h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Link
-                href="/dashboard/projects"
-                className="flex items-center gap-3 rounded-lg border border-[#e0e0e0] bg-[#ffffff] p-4 shadow-sm transition-all hover:border-[#c0c0c0] hover:bg-[#f0f0f0]"
-              >
-                <Folder className="h-5 w-5 text-[#888888]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#222222]">
-                    Projects
-                  </p>
-                  <p className="text-xs text-[#555555]">12 active</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/dashboard/teams"
-                className="flex items-center gap-3 rounded-lg border border-[#e0e0e0] bg-[#ffffff] p-4 shadow-sm transition-all hover:border-[#c0c0c0] hover:bg-[#f0f0f0]"
-              >
-                <Users className="h-5 w-5 text-[#888888]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#222222]">Teams</p>
-                  <p className="text-xs text-[#555555]">8 members</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/dashboard/devices"
-                className="flex items-center gap-3 rounded-lg border border-[#e0e0e0] bg-[#ffffff] p-4 shadow-sm transition-all hover:border-[#c0c0c0] hover:bg-[#f0f0f0]"
-              >
-                <Cpu className="h-5 w-5 text-[#888888]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#222222]">
-                    Devices
-                  </p>
-                  <p className="text-xs text-[#555555]">5 registered</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/dashboard/share-tokens"
-                className="flex items-center gap-3 rounded-lg border border-[#e0e0e0] bg-[#ffffff] p-4 shadow-sm transition-all hover:border-[#c0c0c0] hover:bg-[#f0f0f0]"
-              >
-                <Key className="h-5 w-5 text-[#888888]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#222222]">Tokens</p>
-                  <p className="text-xs text-[#555555]">Manage</p>
-                </div>
-              </Link>
-
-              <Link
-                href="/dashboard/cli-sessions"
-                className="flex items-center gap-3 rounded-lg border border-[#e0e0e0] bg-[#ffffff] p-4 shadow-sm transition-all hover:border-[#c0c0c0] hover:bg-[#f0f0f0]"
-              >
-                <Terminal className="h-5 w-5 text-[#888888]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#222222]">CLI</p>
-                  <p className="text-xs text-[#555555]">3 sessions</p>
-                </div>
-              </Link>
+              <DashboardCard type="projects" user={dbUser} />
+              <DashboardCard type="devices" user={dbUser} />
+              <DashboardCard type="cli" user={dbUser} />
+              <DashboardCard type="tokens" user={dbUser} />
+              <DashboardCard type="teams" user={dbUser} />
             </div>
           </div>
 

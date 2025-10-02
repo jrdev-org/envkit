@@ -7,10 +7,28 @@
   "types": "dist/src/index.d.ts",
   "type": "module",
   "exports": {
-    ".": "./dist/src/index.js",
-    "./env": "./dist/src/env.js",
-    "./encryption": "./dist/src/encryption.js"
+    ".": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./env": {
+      "import": "./dist/src/env.js",
+      "types": "./dist/src/env.d.ts"
+    },
+    "./encryption": {
+      "import": "./dist/src/encryption.js",
+      "types": "./dist/src/encryption.d.ts"
+    },
+    "./types": {
+      "import": "./dist/convex/_generated/dataModel.js",
+      "types": "./dist/convex/_generated/dataModel.d.ts"
+    }
   },
+  "files": [
+    "dist",
+    "convex/_generated",
+    "*.d.ts"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

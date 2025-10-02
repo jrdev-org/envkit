@@ -274,3 +274,16 @@ export const claimToken = mutation({
     return { token };
   },
 });
+
+export const listByUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    const sessions = await ctx.db
+      .query("cliSessions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    return sessions;
+  },
+});
