@@ -1,6 +1,6 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { RedirectToSignIn, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Clock } from "lucide-react";
 import { toast } from "sonner";
@@ -25,7 +25,11 @@ export default function DashboardPage() {
     authId: user ? user.id : "skip",
   }) as User | undefined;
   if (!isLoaded) return <LoadingPage />;
-  if (!isSignedIn) return <div>Not signed in</div>;
+  if (!isSignedIn) {
+    return RedirectToSignIn({
+      redirectUrl: `/dashboard`,
+    });
+  }
   if (!dbUser) return <LoadingPage />;
   // Mock recent activities
   const recentActivities = [

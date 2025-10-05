@@ -5,7 +5,7 @@ import type { Project, Team, User, Variable } from "../../page";
 import LoadingPage from "@/components/loading-page";
 import { toast } from "sonner";
 import { Copy, CopyIcon, LucideEye } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
+import { RedirectToSignIn, useUser } from "@clerk/nextjs";
 
 async function callApi() {
   const res = await fetch("/api/decrypt", {
@@ -65,7 +65,11 @@ export default function ProjectPage({
   if (!isLoaded || !dbUser || !userTeams) return <LoadingPage />;
   if (!project) return <LoadingPage />;
 
-  if (!isSignedIn) return <div>Not signed in</div>;
+  if (!isSignedIn) {
+    return RedirectToSignIn({
+      redirectUrl: `/dashboard/projects/${projectId}`,
+    });
+  }
   const projectTeam = userTeams.find((t) => t._id === project.teamId);
   if (!projectTeam)
     return (

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
+import { Doc } from "./_generated/dataModel.js";
 
 export const get = query({
   args: { id: v.id("users") },
@@ -365,5 +366,58 @@ export const getById = query({
       throw new Error("Team not found");
     }
     return team;
+  },
+});
+
+export const listByOwner = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .collect();
+    return teams;
+  },
+});
+
+export const listByMembership = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    const teamMemberships = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.eq(q.field("removedAt"), undefined))
+      .collect();
+
+    const teams: { team: Doc<"teams">; role: string; members: number }[] = [];
+    for (const teamMembership of teamMemberships) {
+      const team = await ctx.db.get(teamMembership.teamId);
+      if (!team) {
+        throw new Error("Team not found");
+      }
+      const members = await ctx.db
+        .query("teamMembers")
+        .withIndex("by_team", (q) => q.eq("teamId", team._id))
+        .filter((q) => q.eq(q.field("removedAt"), undefined))
+        .collect();
+      teams.push({
+        team,
+        role:
+          team.ownerId === user._id
+            ? `owner && ${teamMembership.role}`
+            : teamMembership.role,
+        members: members.length,
+      });
+    }
+    return teams;
   },
 });
