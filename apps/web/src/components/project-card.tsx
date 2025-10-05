@@ -12,7 +12,7 @@ export default function ProjectCard({ project, userTeams }: ProjectCardProps) {
 
   return (
     <Link
-      href={`/dashboard/projects/p-${project._id}`}
+      href={`/dashboard/projects/${project.name}(${project.stage})?id=${project._id}`}
       className="rounded border border-gray-400 bg-white p-3 shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="flex justify-between">

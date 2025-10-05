@@ -40,11 +40,11 @@ export default function Breadcrumbs() {
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 {isLast ? (
-                  <BreadcrumbPage className="text-gray-500">
+                  <BreadcrumbPage className="text-gray-500 lowercase">
                     {formatSegment(p)}
                   </BreadcrumbPage>
                 ) : (
-                  <BreadcrumbLink href={href}>
+                  <BreadcrumbLink href={href} className="lowercase">
                     {formatSegment(p)}
                   </BreadcrumbLink>
                 )}

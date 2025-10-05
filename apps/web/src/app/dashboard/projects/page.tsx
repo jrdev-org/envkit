@@ -8,19 +8,29 @@ import LoadingPage from "@/components/loading-page";
 
 export default function ProjectsPage() {
   const { isLoaded, user, isSignedIn } = useUser();
-  const dbUser = useQuery(api.users.get, {
-    authId: user ? user.id : "skip",
-  }) as User | undefined;
-  const data = useQuery(api.projects.listByUser, {
-    userId: dbUser?._id ?? ("skip" as any),
-  }) as unknown as
-    | { personalProjects: Project[]; organizationProjects: Project[] }
-    | undefined;
-  const userTeams = useQuery(api.teams.get, {
-    id: dbUser?._id ?? ("skip" as any),
-  }) as unknown as Team[] | undefined;
 
-  if (!isLoaded || !dbUser || !data || !userTeams) return <LoadingPage />;
+  const dbUser = useQuery(
+    api.users.get,
+    user ? { authId: user.id } : "skip",
+  ) as unknown as User;
+
+  const data = useQuery(
+    api.projects.listByUser,
+    dbUser?._id ? { userId: dbUser._id } : "skip",
+  ) as unknown as {
+    personalProjects: Project[];
+    organizationProjects: Project[];
+  };
+
+  const userTeams = useQuery(
+    api.teams.get,
+    dbUser?._id ? { id: dbUser._id } : "skip",
+  ) as unknown as Team[];
+
+  // Handle loading state
+  if (!isLoaded || !user || !data || !userTeams || dbUser === undefined) {
+    return <div>Loading...</div>;
+  }
 
   if (!isSignedIn) return <div>Not signed in</div>;
 
