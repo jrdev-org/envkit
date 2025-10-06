@@ -33,6 +33,7 @@ export default defineSchema({
       v.literal("suspended"),
       v.literal("full") // free-tier limit reached
     ),
+    description: v.optional(v.string()),
     deletedAt: v.optional(v.number()),
     type: v.union(v.literal("personal"), v.literal("organization")),
     maxMembers: v.optional(v.number()), // use for tier limits (unlimited if undefined)

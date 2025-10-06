@@ -123,6 +123,58 @@ export const create = mutation({
   },
 });
 
+export const _new = mutation({
+  args: {
+    name: v.string(),
+    ownerId: v.id("users"),
+    salt: v.string(),
+    type: v.union(v.literal("personal"), v.literal("organization")),
+    maxMembers: v.optional(v.number()), // use for tier limits (unlimited if undefined)
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const owner = await ctx.db.get(args.ownerId);
+    if (owner === null) {
+      throw new Error("Owner not found.");
+    }
+
+    // check if team already exists
+    const existing = await ctx.db
+      .query("teams")
+      .withIndex("by_owner_and_name", (q) =>
+        q.eq("ownerId", owner._id).eq("name", args.name)
+      )
+      .first();
+
+    if (existing !== null && existing.state !== "deleted") {
+      throw new Error(`Team with name ${args.name} already exists.`);
+    }
+
+    const newTeamId = await ctx.db.insert("teams", {
+      name: args.name,
+      ownerId: owner._id,
+      type: args.type,
+      maxMembers: args.maxMembers,
+      lastAction: "created",
+      state: "active",
+      updatedAt: Date.now(),
+    });
+
+    // create team salt
+    await ctx.db.insert("salts", {
+      teamId: newTeamId,
+      salt: args.salt,
+    });
+
+    const newTeam = await ctx.db.get(newTeamId);
+    if (!newTeam) {
+      throw new Error("Team not found");
+    }
+
+    return newTeam;
+  },
+});
+
 export const getSalt = query({
   args: { teamId: v.id("teams") },
   handler: async (ctx, args) => {
@@ -381,7 +433,21 @@ export const listByOwner = query({
       .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
       .filter((q) => q.eq(q.field("deletedAt"), undefined))
       .collect();
-    return teams;
+    const ownedTeams: { team: Doc<"teams">; role: string; members: number }[] =
+      [];
+    for (const team of teams) {
+      const members = await ctx.db
+        .query("teamMembers")
+        .withIndex("by_team", (q) => q.eq("teamId", team._id))
+        .filter((q) => q.eq(q.field("removedAt"), undefined))
+        .collect();
+      ownedTeams.push({
+        team,
+        role: "owner",
+        members: members.length,
+      });
+    }
+    return ownedTeams;
   },
 });
 

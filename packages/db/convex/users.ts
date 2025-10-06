@@ -19,7 +19,13 @@ export const create = mutation({
       .first();
 
     if (existingByAuth !== null) {
-      throw new Error(`User already exists.`);
+      const team = await ctx.db
+        .query("teams")
+        .withIndex("by_owner", (q) => q.eq("ownerId", existingByAuth._id))
+        .filter((q) => q.eq(q.field("name"), `${existingByAuth.name}'s Team`))
+        .first();
+      if (!team) throw new Error("Team not found");
+      return { newUserId: existingByAuth._id, newTeamId: team._id };
     }
 
     // 1.5 then lookup by email.
@@ -29,7 +35,13 @@ export const create = mutation({
       .first();
 
     if (existingByEmail !== null) {
-      throw new Error(`User already exists.`);
+      const team = await ctx.db
+        .query("teams")
+        .withIndex("by_owner", (q) => q.eq("ownerId", existingByEmail._id))
+        .filter((q) => q.eq(q.field("name"), `${existingByEmail.name}'s Team`))
+        .first();
+      if (!team) throw new Error("Team not found");
+      return { newUserId: existingByEmail._id, newTeamId: team._id };
     }
 
     // 2) Create user
@@ -80,7 +92,6 @@ export const get = query({
       .withIndex("by_authId", (q) => q.eq("authId", args.authId))
       .first();
 
-    if (!user) throw new Error("User not found");
     return user;
   },
 });
