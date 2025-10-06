@@ -10,6 +10,7 @@ import {
   UserX,
   MoreVertical,
   Settings,
+  Clipboard,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
@@ -119,13 +120,13 @@ export default function TeamCard({
               className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl ${
                 isDeleted
                   ? "bg-gray-100"
-                  : "bg-gradient-to-br from-indigo-500 to-purple-600"
+                  : "bg-gradient-to-br from-neutral-100 to-neutral-200"
               } shadow-md`}
             >
               {isPersonal ? (
-                <User className="h-6 w-6 text-white" />
+                <User className="h-6 w-6 text-black" />
               ) : (
-                <Building2 className="h-6 w-6 text-white" />
+                <Building2 className="h-6 w-6 text-black" />
               )}
             </div>
 
@@ -180,6 +181,18 @@ export default function TeamCard({
 
         {/* Stats */}
         <div className="mb-5 grid grid-cols-2 gap-4">
+          {/* Description */}
+          <div className="flex items-center gap-3 rounded-lg bg-gray-50 p-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white">
+              <Clipboard className="h-4 w-4 text-gray-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Description</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {team.description ?? "No description"}
+              </p>
+            </div>
+          </div>
           {/* Members */}
           <div className="flex items-center gap-3 rounded-lg bg-gray-50 p-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white">

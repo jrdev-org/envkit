@@ -8,6 +8,7 @@ import { api, useQuery } from "@envkit/db/env";
 import { type Doc } from "@envkit/db/types";
 import DashboardCard from "@/components/dashboard-card";
 import LoadingPage from "@/components/loading-page";
+import { useRouter } from "next/navigation";
 
 export type Project = Doc<"projects">;
 export type User = Doc<"users">;
@@ -20,6 +21,7 @@ export type ShareToken = Doc<"shareTokens">;
 export type TeamMember = Doc<"teamMembers">;
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { isLoaded, user, isSignedIn } = useUser();
   const dbUser = useQuery(api.users.get, {
     authId: user ? user.id : "skip",
@@ -30,7 +32,10 @@ export default function DashboardPage() {
       redirectUrl: `/dashboard`,
     });
   }
-  if (!dbUser) return <LoadingPage />;
+  if (dbUser === undefined) return <LoadingPage />;
+  if (!dbUser) {
+    return router.push(`/dashboard/onboarding`);
+  }
   // Mock recent activities
   const recentActivities = [
     {

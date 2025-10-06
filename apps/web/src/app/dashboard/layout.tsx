@@ -8,7 +8,7 @@ export default function DashboardLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   return (
-    <main className="flex min-h-screen flex-col bg-neutral-50 text-neutral-600">
+    <main className="flex min-h-screen flex-col bg-neutral-100 text-neutral-600">
       {/* Top bar */}
       <div className="border-neural-700 fixed top-0 right-0 left-0 z-10 flex items-center justify-between border-b px-6 py-4 backdrop-blur-2xl">
         <div>

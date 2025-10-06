@@ -8,8 +8,12 @@ dotenv.config({
 
 async function main() {
   const me = await safeCall(
-    async () => await dbApi.users.get(process.env.TEST_USER_ID!)
+    async () => await dbApi.users.get("user_31lpXm6H3ImT4erNp7b8FHwfu5O")
   )();
+  if (!me) {
+    console.log("No user found");
+    return;
+  }
   if ("error" in me) {
     console.log(me.error);
     return;

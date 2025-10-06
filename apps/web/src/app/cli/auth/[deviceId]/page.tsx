@@ -1,4 +1,5 @@
 "use client";
+import LoadingPage from "@/components/loading-page";
 import {
   Card,
   CardHeader,
@@ -29,8 +30,7 @@ export default function AuthPage({
   const [authStatus, setAuthStatus] = useState("null");
   const createUser = useMutation(api.users.create);
 
-  if (!isLoaded) return <div>Loading...</div>;
-
+  if (!isLoaded) return <LoadingPage />;
   if (!isSignedIn) {
     return RedirectToSignIn({
       redirectUrl: `/cli/auth/${deviceId}?port=${port}`,

@@ -13,7 +13,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "envkit": "tsx ./src/cli.ts"
   },
   "exports": {
     ".": "./dist/src/index.js"
