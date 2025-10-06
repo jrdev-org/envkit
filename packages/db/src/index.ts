@@ -46,6 +46,9 @@ const dbApi = {
     get: async (authId: string) => {
       return await convex.query(api.users.get, { authId });
     },
+    getById: async (id: Id<"users">) => {
+      return await convex.query(api.users.getById, { id });
+    },
     create: async (authId: string, name: string, email: string) => {
       const { newUserId, newTeamId } = await convex.mutation(api.users.create, {
         authId,
@@ -262,6 +265,9 @@ const dbApi = {
         tokenId,
         userId,
       });
+    },
+    listByUser: async (userId: Id<"users">) => {
+      return await convex.query(api.projects.listByUser, { userId });
     },
   },
   variables: {

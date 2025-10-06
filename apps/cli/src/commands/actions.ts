@@ -9,7 +9,6 @@ import {
   getEnvFileHash,
   loadEnvFile,
   runInit,
-  writeEnvFile,
   writeProjectsDir,
   type LinkedProject,
 } from "./init.js";
@@ -18,7 +17,7 @@ import { dbApi, safeCall } from "@envkit/db";
 import { TeamService } from "@envkit/db/encryption";
 import { type Id } from "@envkit/db/env";
 import { recordAudit } from "@/lib/audit.js";
-import { getProjectName } from "./projects.js";
+import { getProjectName } from "@/lib/project.js";
 
 export async function encryptVariable(
   teamId: Id<"teams">,
@@ -58,13 +57,16 @@ export async function decryptVariable(
 export async function decryptVariables(
   teamId: Id<"teams">,
   callerid: Id<"users">,
-  values: { name: string; value: string }[]
+  values: { key: string; value: string }[]
 ) {
   const teamService = new TeamService(teamId, callerid);
   const decrypted = [];
   for (const v of values) {
-    const decryptedValue = await teamService.decryptVariable(v.value);
-    decrypted.push({ name: v.name, value: decryptedValue });
+    log.trace(`Decrypting variable ${v.key}...`);
+    const decryptedValue = await teamService.decryptVariable(
+      v.value.toString()
+    );
+    decrypted.push({ key: v.key, value: decryptedValue });
   }
   return decrypted;
 }
@@ -169,20 +171,20 @@ export async function ensureEnvLocal() {
           }
         }
 
-        await writeEnvFile(
-          envFile,
-          Object.entries(consolidated).map(([k, v]) => ({
-            name: k,
-            value: v,
-          }))
-        );
+        // await writeEnvFile(
+        //   envFile,
+        //   Object.entries(consolidated).map(([k, v]) => ({
+        //     name: k,
+        //     value: v,
+        //   }))
+        // );
         log.warn(
           `Migration complete. Values consolidated into ${chalk.bold(
             ".env.local"
           )}.`
         );
       } else {
-        await writeEnvFile(envFile, []);
+        // await writeEnvFile(envFile, []);
         log.info(
           `Created empty ${chalk.bold(
             ".env.local"
@@ -190,7 +192,7 @@ export async function ensureEnvLocal() {
         );
       }
     } else {
-      await writeEnvFile(envFile, []);
+      // await writeEnvFile(envFile, []);
       log.info(`Created empty ${chalk.bold(".env.local")}`);
     }
   }
@@ -315,7 +317,7 @@ export async function runPull(stage?: string) {
     decryptedVariables.push({ name: v.name, value: decrypted });
   }
 
-  await writeEnvFile(envFile, decryptedVariables);
+  // await writeEnvFile(envFile, decryptedVariables);
   const newHash = await getEnvFileHash(envFile, linkedProject, token.userId);
   await writeProjectsDir(linkedProject, newHash);
 
@@ -503,10 +505,10 @@ export async function runSet(
     }
     const deleteSpinner = log.task(`Setting variable...`).start();
     variables[existing] = value;
-    await writeEnvFile(
-      envFile,
-      Object.entries(variables).map(([k, v]) => ({ name: k, value: v }))
-    );
+    // await writeEnvFile(
+    //   envFile,
+    //   Object.entries(variables).map(([k, v]) => ({ name: k, value: v }))
+    // );
     await recordAudit({
       timestamp: Date.now(),
       project: projectName,
@@ -539,10 +541,10 @@ export async function runSet(
     }
     // Update the local variable
     variables[key] = value;
-    await writeEnvFile(
-      envFile,
-      Object.entries(variables).map(([k, v]) => ({ name: k, value: v }))
-    );
+    // await writeEnvFile(
+    //   envFile,
+    //   Object.entries(variables).map(([k, v]) => ({ name: k, value: v }))
+    // );
     await recordAudit({
       timestamp: Date.now(),
       project: projectName,
@@ -610,10 +612,10 @@ export async function runDelete(
       }
 
       // update local file after cloud confirms
-      await writeEnvFile(
-        envFile,
-        varsArray.filter((v) => v.name !== key)
-      );
+      // await writeEnvFile(
+      //   envFile,
+      //   varsArray.filter((v) => v.name !== key)
+      // );
       await recordAudit({
         timestamp: Date.now(),
         project: projectName,

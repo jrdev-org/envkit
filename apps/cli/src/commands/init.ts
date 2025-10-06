@@ -11,8 +11,14 @@ import { PROJECTS_DIR } from "@/constants.js";
 import { TeamService } from "@envkit/db/encryption";
 import dotenv from "dotenv";
 import { recordAudit } from "@/lib/audit.js";
-import { decryptVariable, ensureEnvLocal } from "./actions.js";
-import { getProjectName } from "./projects.js";
+import { decryptVariable, encryptVariable, ensureEnvLocal } from "./actions.js";
+import {
+  addLinkedProject,
+  checkLinkedProject,
+  getProjectName,
+  writeEnvFile,
+} from "../lib/project.js";
+import { Doc } from "@envkit/db/types";
 
 export async function loadEnvFile(
   filePath: string
@@ -115,23 +121,6 @@ export async function resolveConflicts(
   return merged;
 }
 
-export async function writeEnvFile(
-  filePath: string,
-  vars: { name: string; value: string }[]
-) {
-  const content =
-    vars
-      .map((v) => {
-        const escaped = v.value
-          .replace(/\\/g, "\\\\")
-          .replace(/"/g, '\\"')
-          .replace(/\n/g, "\\n");
-        return `${v.name}="${escaped}"`;
-      })
-      .join("\n") + "\n";
-  await fs.writeFile(filePath, content, { encoding: "utf-8" });
-}
-
 // TODO: create a writeProjectsDir function ...
 const getProject = dbApi.projects.get;
 const getTeam = dbApi.teams.get;
@@ -223,7 +212,7 @@ async function linkProject(workDir: string, token: AuthToken, teams: Team[]) {
 
   const merged = await resolveConflicts(envFilePath, newVars);
   const vars = Object.entries(merged).map(([k, v]) => ({ name: k, value: v }));
-  await writeEnvFile(envFilePath, vars);
+  // await writeEnvFile(envFilePath, vars);
   const hash = await getEnvFileHash(
     envFilePath,
     { ...projectToLink, linkedAt: Date.now(), hash: "" },
@@ -304,7 +293,7 @@ async function createProject(workDir: string, teams: Team[]) {
 
   const merged = await resolveConflicts(envFilePath, newVars);
   const vars = Object.entries(merged).map(([k, v]) => ({ name: k, value: v }));
-  await writeEnvFile(envFilePath, vars);
+  // await writeEnvFile(envFilePath, vars);
   await writeProjectsDir(newProject, "master");
   await recordAudit({
     timestamp: Date.now(),
@@ -324,33 +313,175 @@ async function createProject(workDir: string, teams: Team[]) {
 
 // --- Refactored init ---
 export async function runInit(todo?: "link" | "create") {
-  const WORKING_DIR = process.cwd();
+  await checkLinkedProject();
   const token = await requireAuthToken();
-  const teams = await dbApi.teams.get(token.userId);
 
-  if (!teams.length) {
-    log.error("You don't have any teams yet. Please create one first.");
-    return;
-  }
-
-  if (!todo) {
+  if (todo === undefined) {
     todo = await select({
       message: "What do you want to do?",
       choices: [
         { name: "Create a new project", value: "create" },
-        { name: "Link an existing project", value: "link" },
+        { name: "Link to an existing project", value: "link" },
       ],
     });
   }
 
-  // REVIEW: always migrate to .env.local at init
-  await ensureEnvLocal();
+  const detectedProjectName = getProjectName();
 
   try {
     if (todo === "link") {
-      await linkProject(WORKING_DIR, token, teams);
+      log.debug("Linking to project...");
+      const userProjects = await safeCall(() =>
+        dbApi.projects.listByUser(token.userId)
+      )();
+      if ("error" in userProjects) throw new Error(userProjects.error);
+      const { personalProjects, organizationProjects } = userProjects;
+      const projectUserCanEdit: Doc<"projects">[] = [];
+      for (const project of personalProjects) {
+        projectUserCanEdit.push(project);
+      }
+      for (const project of organizationProjects) {
+        const teamMembers = await safeCall(() =>
+          dbApi.teams.getMembers(project.teamId)
+        )();
+        if ("error" in teamMembers) throw new Error(teamMembers.error);
+        if (teamMembers.length > 0) {
+          const user = teamMembers.find(
+            (member) => member.userId === token.userId
+          );
+          if (user && user.role !== "viewer") projectUserCanEdit.push(project);
+        }
+      }
+      if (!projectUserCanEdit.length) throw new Error("No projects found");
+      const projectId = await select({
+        message: "What project do you want to link?",
+        choices: projectUserCanEdit.map((p) => ({
+          name: `${p.name} (${p.stage})`,
+          value: p._id,
+        })),
+      });
+      const projectToLink = projectUserCanEdit.find((p) => p._id === projectId);
+      if (!projectToLink) throw new Error("Invalid project selected");
+
+      const varsSpinner = log.task("Fetching variables");
+      const projectVars = await safeCall(() =>
+        dbApi.projects.getVars({
+          projectId: projectToLink._id,
+          callerId: token.userId,
+          localHash: "",
+        })
+      )();
+      if ("error" in projectVars) {
+        varsSpinner.fail("Error fetching variables!");
+        throw new Error(projectVars.error);
+      }
+      varsSpinner.succeed("Project linked successfully!");
+      await writeEnvFile({
+        teamId: projectToLink.teamId,
+        callerId: token.userId,
+        encryptedVars: projectVars.vars.map((v) => ({
+          key: v.name,
+          value: v.value,
+        })),
+      });
+      await addLinkedProject({
+        project: projectToLink,
+        encryptedVars: projectVars.vars.map((v) => ({
+          key: v.name,
+          value: v.value,
+        })),
+      });
+      log.success(`Variables saved to ${chalk.bold(".env.local")}`);
+      process.exit(0);
     } else if (todo === "create") {
-      await createProject(WORKING_DIR, teams);
+      const createSpinner = log.task("Creating project...").start();
+      const projectName = await input({
+        message: "What should we name this project?",
+        default: detectedProjectName,
+      });
+      const projectStage = (await select({
+        message: "What stage do you want to use?",
+        choices: ["development", "production", "staging"],
+        loop: true,
+      })) as string;
+      const teams = await safeCall(() => dbApi.teams.get(token.userId))();
+      if ("error" in teams) throw new Error(teams.error);
+      if (!teams || !teams.length) throw new Error("No teams found");
+
+      const projectTeamId = await select({
+        message: "What team do you want to use?",
+        choices: teams.map((t) => ({
+          name: `${t.name} (${t.type})`,
+          value: t._id,
+        })),
+        loop: true,
+      });
+      const projectTeam = teams.find((t) => t._id === projectTeamId);
+      if (!projectTeam) throw new Error("Invalid team selected");
+      const newProject = await safeCall(() =>
+        dbApi.projects.create(projectName.trim(), projectStage, projectTeam._id)
+      )();
+      if ("error" in newProject) {
+        createSpinner.fail("Error creating project!");
+        throw new Error(newProject.error);
+      }
+      // store the project metadata
+      const encryptedProjectMetadata = await Promise.all(
+        [
+          {
+            name: "PROJECT_NAME",
+            value: projectName.trim(),
+          },
+          {
+            name: "PROJECT_STAGE",
+            value: projectStage,
+          },
+        ].map(async (v) => ({
+          name: v.name,
+          value: await encryptVariable(
+            newProject.teamId,
+            token.userId,
+            v.value
+          ),
+        }))
+      );
+      await safeCall(async () => {
+        await dbApi.projects.addVars(
+          newProject._id,
+          token.userId,
+          encryptedProjectMetadata
+        );
+      })();
+      // get the initial variables
+      const variables = await safeCall(() =>
+        dbApi.projects.getVars({
+          projectId: newProject._id,
+          callerId: token.userId,
+          localHash: "",
+        })
+      )();
+      if ("error" in variables) {
+        createSpinner.fail("Error fetching variables!");
+        throw new Error(variables.error);
+      }
+      createSpinner.succeed("Project created successfully!");
+      await writeEnvFile({
+        teamId: newProject.teamId,
+        callerId: token.userId,
+        encryptedVars: variables.vars.map((v) => ({
+          key: v.name,
+          value: v.value,
+        })),
+      });
+      await addLinkedProject({
+        project: newProject,
+        encryptedVars: variables.vars.map((v) => ({
+          key: v.name,
+          value: v.value,
+        })),
+      });
+      log.success(`Run ${chalk.bold("envkit sync")} to sync variables`);
+      process.exit(0);
     } else {
       throw new Error("Invalid action");
     }
@@ -366,4 +497,7 @@ export async function runInit(todo?: "link" | "create") {
 
 export const initCmd = new Command("init")
   .description("Initialize a new project")
-  .action(runInit);
+  .argument('[action] <"create" | "link">', "Action to perform")
+  .action(async (action: "create" | "link" | undefined) => {
+    await runInit(action);
+  });

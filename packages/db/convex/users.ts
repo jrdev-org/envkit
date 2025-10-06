@@ -248,3 +248,12 @@ export const remove = mutation({
     return user;
   },
 });
+
+export const getById = query({
+  args: { id: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.id);
+    if (!user) throw new Error("User not found");
+    return user;
+  },
+});

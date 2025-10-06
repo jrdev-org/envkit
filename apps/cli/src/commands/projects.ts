@@ -9,18 +9,10 @@ import path from "path";
 import { PROJECTS_DIR } from "@/constants.js";
 import { getDeviceInfo, getOrCreateDeviceId } from "@/lib/device.js";
 import chalk from "chalk";
-import { getEnvFileHash, writeEnvFile, writeProjectsDir } from "./init.js";
+import { getEnvFileHash, writeProjectsDir } from "./init.js";
 import { TeamService } from "@envkit/db/encryption";
 import clipboard from "clipboardy";
-
-export async function getProjectName() {
-  const projectName = path.basename(process.cwd());
-  if (!projectName) {
-    log.warn("Please run this command from the root of your project");
-    process.exit(1);
-  }
-  return projectName;
-}
+import { getProjectName } from "@/lib/project.js";
 
 async function runUnlink(force?: boolean) {
   const token = await requireAuthToken();
@@ -235,7 +227,7 @@ export const linkCmd = new Command("link")
       const decrypted = await teamService.decryptVariable(v.value);
       decryptedVariables.push({ name: v.name, value: decrypted });
     }
-    await writeEnvFile(envFilePath, decryptedVariables);
+    // await writeEnvFile(envFilePath, decryptedVariables);
     const hash = await getEnvFileHash(
       envFilePath,
       { ...project, linkedAt: Date.now(), hash: "" },

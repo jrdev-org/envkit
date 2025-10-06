@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   getStoredAuthToken,
+  isAuthenticated,
   requireAuthToken,
   revokeSesion,
   startAuthServer,
@@ -175,6 +176,11 @@ const logoutCmd = new Command("logout")
   .alias("bye")
   .description("Log out of the current session")
   .action(async () => {
+    const auth = await isAuthenticated();
+    if (!auth) {
+      log.debug("Already logged out");
+      process.exit(1);
+    }
     const token = await requireAuthToken();
     const res = await revokeSesion(token.sessionId);
     if (res.includes("NO_AUTH")) {
@@ -190,10 +196,21 @@ const logoutCmd = new Command("logout")
 const whoamiCmd = new Command("whoami")
   .description("Get information about the current user")
   .action(async () => {
+    const auth = await isAuthenticated();
+    if (!auth) {
+      log.error(
+        `Not authenticated, please run ${chalk.bold("envkit login")} first`
+      );
+      process.exit(1);
+    }
     const token = await requireAuthToken();
     const res = await safeCall(
-      async () => await dbApi.users.get(token.userId)
+      async () => await dbApi.users.getById(token.userId)
     )();
+    if (!res) {
+      log.error("User not found");
+      process.exit(1);
+    }
     if ("error" in res) {
       log.error(res.error);
     } else {

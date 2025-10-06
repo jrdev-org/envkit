@@ -27,11 +27,13 @@ process.on("SIGTERM", () => {
 });
 
 import { CLI_VERSION } from "./constants.js";
+import { checkGitignore, syncGitignore } from "./lib/project.js";
 
 const program = new Command("envkit")
   .description("Envkit CLI")
   .version(CLI_VERSION)
   .action(async () => {
+    await syncGitignore();
     log.info("Welcome to the Envkit CLI!");
     log.info(`Run ${chalk.bold("envkit --help")} to see available commands.`);
     process.exit(0);

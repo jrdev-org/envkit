@@ -361,22 +361,6 @@ export const create = mutation({
 
     const newProject = await ctx.db.get(newProjectId);
     if (!newProject) throw new Error("Project not found");
-    // insert PROJECT_NAME and TEAM_NAME variables
-    await Promise.all([
-      ctx.db.insert("variables", {
-        projectId: newProject._id,
-        name: "PROJECT_NAME",
-        value: newProject.name,
-        updatedAt: Date.now(),
-      }),
-      ctx.db.insert("variables", {
-        projectId: newProject._id,
-        name: "TEAM_NAME",
-        value: team.name,
-        updatedAt: Date.now(),
-      }),
-    ]);
-
     return newProject;
   },
 });
