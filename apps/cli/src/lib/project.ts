@@ -13,6 +13,7 @@ export async function addLinkedProject({
   project: Project;
   encryptedVars: { key: string; value: string }[];
 }) {
+  await syncGitignore();
   const exists = await fs.stat(METADATA_DIR).catch(() => null);
   if (!exists) await fs.mkdir(METADATA_DIR, { recursive: true });
 
