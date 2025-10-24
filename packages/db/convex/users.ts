@@ -138,19 +138,38 @@ export const remove = mutation({
 });
 
 export const getShareTokens = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const { userId } = args;
-    const existing = await ctx.db.get(userId);
-    if (!existing) throw new Error(`User not found!`);
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User not found!");
 
-    const shareTokens = await ctx.db
+    const tokens = await ctx.db
       .query("shareTokens")
-      .withIndex("by_creator", (q) => q.eq("createdBy", userId))
+      .withIndex("by_creator", (q) => q.eq("createdBy", user._id))
       .collect();
-    return shareTokens;
+
+    const tokensWithActivities = await Promise.all(
+      tokens.map(async (token) => {
+        const activities = await ctx.db
+          .query("activities")
+          .withIndex("by_entity", (q) =>
+            q.eq("entityType", "token").eq("entityId", token._id)
+          )
+          .collect();
+
+        return {
+          ...token,
+          activities: activities.map((a) => ({
+            entityType: a.entityType,
+            activity: a.activity,
+            timestamp: a.timestamp,
+            userId: a.userId,
+          })),
+        };
+      })
+    );
+
+    return tokensWithActivities;
   },
 });
 
@@ -172,28 +191,47 @@ export const getDevices = query({
 });
 
 export const getCliSessions = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const { userId } = args;
-    const existing = await ctx.db.get(userId);
-    if (!existing) throw new Error(`User not found!`);
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User not found!");
 
     const devices = await ctx.db
       .query("devices")
-      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
       .collect();
 
-    const cliSessions = [];
+    const allSessions = [];
     for (const device of devices) {
       const sessions = await ctx.db
         .query("cliSessions")
         .withIndex("by_deviceId", (q) => q.eq("deviceId", device._id))
         .collect();
-      cliSessions.push(...sessions);
+
+      const sessionsWithActivities = await Promise.all(
+        sessions.map(async (session) => {
+          const activities = await ctx.db
+            .query("activities")
+            .withIndex("by_entity", (q) =>
+              q.eq("entityType", "cliSession").eq("entityId", session._id)
+            )
+            .collect();
+
+          return {
+            ...session,
+            activities: activities.map((a) => ({
+              entityType: a.entityType,
+              activity: a.activity,
+              timestamp: a.timestamp,
+            })),
+          };
+        })
+      );
+
+      allSessions.push(...sessionsWithActivities);
     }
-    return cliSessions;
+
+    return allSessions;
   },
 });
 
@@ -212,8 +250,21 @@ export const getPersonalTeam = query({
       .unique();
 
     if (!team) throw new Error("Team not found!");
+    const teamActivities = await db
+      .query("activities")
+      .withIndex("by_entity", (q) =>
+        q.eq("entityType", "team").eq("entityId", team._id)
+      )
+      .collect();
 
-    return team;
+    return {
+      ...team,
+      activities: teamActivities.map((a) => ({
+        entityType: a.entityType,
+        activity: a.activity,
+        timestamp: a.timestamp,
+      })),
+    };
   },
 });
 
@@ -223,31 +274,71 @@ export const getOwnedTeams = query({
   },
   handler: async (ctx, args) => {
     const { userId } = args;
-    const existing = await ctx.db.get(userId);
-    if (!existing) throw new Error(`User not found!`);
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error(`User not found!`);
 
     const teams = await ctx.db
       .query("teams")
       .withIndex("by_owner", (q) => q.eq("ownerId", userId))
       .collect();
-    return teams;
+
+    const teamsWithActivities = await Promise.all(
+      teams.map(async (team) => {
+        const activities = await ctx.db
+          .query("activities")
+          .withIndex("by_entity", (q) =>
+            q.eq("entityType", "team").eq("entityId", team._id)
+          )
+          .collect();
+
+        return {
+          ...team,
+          activities: activities.map((a) => ({
+            entityType: a.entityType,
+            activity: a.activity,
+            timestamp: a.timestamp,
+          })),
+        };
+      })
+    );
+
+    return teamsWithActivities;
   },
 });
 
 export const getOwnedProjects = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const { userId } = args;
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
     const user = await ctx.db.get(userId);
-    if (!user) throw new Error(`User not found!`);
+    if (!user) throw new Error("User not found!");
 
     const projects = await ctx.db
       .query("projects")
       .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
       .collect();
-    return projects;
+
+    const projectsWithActivities = await Promise.all(
+      projects.map(async (project) => {
+        const activities = await ctx.db
+          .query("activities")
+          .withIndex("by_entity", (q) =>
+            q.eq("entityType", "project").eq("entityId", project._id)
+          )
+          .collect();
+
+        return {
+          ...project,
+          activities: activities.map((a) => ({
+            entityType: a.entityType,
+            activity: a.activity,
+            timestamp: a.timestamp,
+            userId: a.userId,
+          })),
+        };
+      })
+    );
+
+    return projectsWithActivities;
   },
 });
 
@@ -267,62 +358,106 @@ export const getMemberTeams = query({
     const teams = [];
     for (const membership of memberships) {
       const team = await ctx.db.get(membership.teamId);
-      if (team)
+      if (team) {
+        const teamActivities = await ctx.db
+          .query("activities")
+          .withIndex("by_entity", (q) =>
+            q.eq("entityType", "team").eq("entityId", team._id)
+          )
+          .collect();
+
         teams.push({
           id: team._id,
           name: team.name,
           role: membership.role,
           projects: membership.allowedProjects,
-          activities: team.activities,
+          activities: teamActivities.map((a) => {
+            return {
+              entityType: a.entityType,
+              activity: a.activity,
+              timestamp: a.timestamp,
+            };
+          }),
           jonedAt: membership.joinedAt,
           updatedAt: team.updatedAt,
         });
+      }
     }
     return teams;
   },
 });
 
 export const getMemberProjects = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const { userId } = args;
-    const existing = await ctx.db.get(userId);
-    if (!existing) throw new Error(`User not found!`);
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User not found!");
 
     const memberships = await ctx.db
       .query("teamMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
-    const projects = [];
+
+    const projects: any[] = [];
+
     for (const membership of memberships) {
       for (const projectId of membership.allowedProjects) {
         const project = await ctx.db.get(projectId);
-        if (project)
-          projects.push({
-            id: project._id,
-            name: project.name,
-            activities: project.activities,
-            updatedAt: project.updatedAt,
-            role: membership.role,
-          });
+        if (!project) continue;
+
+        const activities = await ctx.db
+          .query("activities")
+          .withIndex("by_entity", (q) =>
+            q.eq("entityType", "project").eq("entityId", project._id)
+          )
+          .collect();
+
+        projects.push({
+          ...project,
+          activities: activities.map((a) => ({
+            entityType: a.entityType,
+            activity: a.activity,
+            timestamp: a.timestamp,
+          })),
+          role: membership.role,
+        });
       }
     }
+
     return projects;
   },
 });
 
 export const getOwnedDevices = query({
-  args: {
-    userId: v.id("users"),
-  },
-  async handler(ctx, { userId }) {
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
     const user = await getCaller({ callerId: userId, ctx });
+
     const devices = await ctx.db
       .query("devices")
       .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
       .collect();
-    return devices;
+
+    const devicesWithActivities = await Promise.all(
+      devices.map(async (device) => {
+        const activities = await ctx.db
+          .query("activities")
+          .withIndex("by_entity", (q) =>
+            q.eq("entityType", "device").eq("entityId", device._id)
+          )
+          .collect();
+
+        return {
+          ...device,
+          activities: activities.map((a) => ({
+            entityType: a.entityType,
+            activity: a.activity,
+            timestamp: a.timestamp,
+          })),
+        };
+      })
+    );
+
+    return devicesWithActivities;
   },
 });

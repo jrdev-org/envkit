@@ -19,13 +19,13 @@ export const init = mutation({
       status: "pending",
       userAgent,
       expiresAt,
-      activities: [
-        {
-          userId: device.ownerId,
-          activity: "Initialized CLI session",
-          timestamp: Date.now(),
-        },
-      ],
+    });
+    await ctx.db.insert("activities", {
+      entityType: "device",
+      entityId: device._id,
+      userId: device.ownerId,
+      activity: "Initialized CLI session",
+      timestamp: Date.now(),
     });
 
     return { success: true };
@@ -52,13 +52,13 @@ export const authenticate = mutation({
     if (!device) throw new Error("Device not found!");
     await ctx.db.patch(session._id, {
       status: "authenticated",
-      activities: session.activities.concat([
-        {
-          userId: device.ownerId,
-          activity: "Authenticated CLI session",
-          timestamp: Date.now(),
-        },
-      ]),
+    });
+    await ctx.db.insert("activities", {
+      entityType: "cliSession",
+      entityId: session._id,
+      userId: device.ownerId,
+      activity: "Authenticated CLI session",
+      timestamp: Date.now(),
     });
     return { success: true };
   },
@@ -83,14 +83,14 @@ export const revoke = mutation({
     if (!device) throw new Error("Device not found!");
     await ctx.db.patch(session._id, {
       status: "revoked",
-      activities: session.activities.concat([
-        {
-          userId: device.ownerId,
-          activity: "Revoked CLI session",
-          timestamp: Date.now(),
-        },
-      ]),
       revokedAt: Date.now(),
+    });
+    await ctx.db.insert("activities", {
+      entityType: "cliSession",
+      entityId: session._id,
+      userId: device.ownerId,
+      activity: "Revoked CLI session",
+      timestamp: Date.now(),
     });
     return { success: true };
   },

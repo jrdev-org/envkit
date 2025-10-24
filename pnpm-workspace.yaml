@@ -1,6 +1,10 @@
-onlyBuiltDependencies:
-  - esbuild
-
 packages:
   - apps/*
   - packages/*
+
+onlyBuiltDependencies:
+  - '@clerk/shared'
+  - '@tailwindcss/oxide'
+  - esbuild
+  - sharp
+  - unrs-resolver

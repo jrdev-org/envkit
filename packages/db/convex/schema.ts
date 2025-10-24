@@ -20,18 +20,11 @@ export default defineSchema({
   teams: defineTable({
     name: v.string(),
     ownerId: v.id("users"),
-    activities: v.array(
-      v.object({
-        userId: v.id("users"),
-        activity: v.string(),
-        timestamp: v.number(),
-      }),
-    ),
     state: v.union(
       v.literal("active"),
       v.literal("deleted"),
       v.literal("suspended"),
-      v.literal("full"), // free-tier limit reached
+      v.literal("full")
     ),
     deletedAt: v.optional(v.number()),
     type: v.union(v.literal("personal"), v.literal("organization")),
@@ -73,15 +66,8 @@ export default defineSchema({
   // --- Projects ---
   projects: defineTable({
     name: v.string(),
-    teamId: v.id("teams"), // always owned by a team
+    teamId: v.id("teams"),
     ownerId: v.id("users"),
-    activities: v.array(
-      v.object({
-        userId: v.id("users"),
-        activity: v.string(),
-        timestamp: v.number(),
-      }),
-    ),
     updatedAt: v.number(),
   })
     .index("by_team", ["teamId"])
@@ -91,25 +77,18 @@ export default defineSchema({
   // --- Project Share Tokens ---
   shareTokens: defineTable({
     projectId: v.id("projects"),
-    createdBy: v.id("users"), // who issued the share
+    createdBy: v.id("users"),
     stage: v.union(
       v.literal("development"),
       v.literal("production"),
-      v.literal("staging"),
+      v.literal("staging")
     ),
-    tokenHash: v.string(), // cleared on use/expiry
-    allowLink: v.boolean(), // whether recipients can persist
-    expiresAt: v.number(), // when the token expires
-    singleUse: v.boolean(), // whether to clear after use
-    // helpful for auditing
-    lastAccessedBy: v.array(
-      v.object({
-        userId: v.id("users"),
-        timestamp: v.number(),
-      }),
-    ),
+    tokenHash: v.string(),
+    allowLink: v.boolean(),
+    expiresAt: v.number(),
+    singleUse: v.boolean(),
   })
-    .index("by_token_hash", ["tokenHash"]) // lookup until cleared
+    .index("by_token_hash", ["tokenHash"])
     .index("by_stage", ["stage"])
     .index("by_project", ["projectId"])
     .index("by_creator", ["createdBy"]),
@@ -117,18 +96,18 @@ export default defineSchema({
   variables: defineTable({
     projectId: v.id("projects"),
     name: v.string(),
-    value: v.string(), // encrypted
+    value: v.string(),
     stage: v.union(
       v.literal("development"),
       v.literal("production"),
-      v.literal("staging"),
+      v.literal("staging")
     ),
     previousValue: v.array(
       v.object({
         updatedBy: v.id("users"),
         value: v.string(),
         updatedAt: v.number(),
-      }),
+      })
     ),
   })
     .index("by_project", ["projectId"])
@@ -145,13 +124,6 @@ export default defineSchema({
     username: v.string(),
     nodeVersion: v.string(),
     cliVersion: v.string(),
-    activities: v.array(
-      v.object({
-        userId: v.id("users"),
-        activity: v.string(),
-        timestamp: v.number(),
-      }),
-    ),
   })
     .index("by_owner", ["ownerId"])
     .index("by_owner_and_deviceId", ["ownerId", "deviceId"])
@@ -163,21 +135,35 @@ export default defineSchema({
     status: v.union(
       v.literal("pending"),
       v.literal("authenticated"),
-      v.literal("revoked"),
+      v.literal("revoked")
     ),
     revokedAt: v.optional(v.number()),
     expiresAt: v.number(),
     userAgent: v.optional(v.string()),
-    activities: v.array(
-      v.object({
-        userId: v.id("users"),
-        activity: v.string(),
-        timestamp: v.number(),
-      }),
-    ),
   })
     .index("by_deviceId", ["deviceId"])
     .index("by_authTokenHash", ["authTokenHash"]),
-});
 
-// TODO: Move activities into a separate entity
+  // --- Activities Table ---
+  activities: defineTable({
+    entityType: v.union(
+      v.literal("team"),
+      v.literal("project"),
+      v.literal("device"),
+      v.literal("cliSession"),
+      v.literal("token")
+    ),
+    entityId: v.union(
+      v.id("teams"),
+      v.id("projects"),
+      v.id("devices"),
+      v.id("cliSessions"),
+      v.id("shareTokens")
+    ),
+    userId: v.id("users"),
+    activity: v.string(),
+    timestamp: v.number(),
+  })
+    .index("by_entity", ["entityType", "entityId"])
+    .index("by_user", ["userId"]),
+});

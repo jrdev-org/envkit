@@ -17,13 +17,13 @@ export const register = mutation({
     const owner = await getCaller({ callerId: args.ownerId, ctx });
     const newDeviceId = await ctx.db.insert("devices", {
       ...args,
-      activities: [
-        {
-          userId: owner._id,
-          activity: "created",
-          timestamp: Date.now(),
-        },
-      ],
+    });
+    await ctx.db.insert("activities", {
+      entityType: "device",
+      entityId: newDeviceId,
+      userId: owner._id,
+      activity: "created",
+      timestamp: Date.now(),
     });
 
     const device = await ctx.db.get(newDeviceId);

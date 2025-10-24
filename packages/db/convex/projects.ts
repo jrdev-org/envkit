@@ -20,13 +20,13 @@ export const create = mutation({
       teamId: team._id,
       ownerId: caller._id,
       updatedAt: Date.now(),
-      activities: [
-        {
-          userId: caller._id,
-          activity: "created",
-          timestamp: Date.now(),
-        },
-      ],
+    });
+    await ctx.db.insert("activities", {
+      entityType: "project",
+      entityId: newProjectId,
+      userId: caller._id,
+      activity: "created",
+      timestamp: Date.now(),
     });
 
     const newProject = await ctx.db.get(newProjectId);
@@ -52,13 +52,13 @@ export const transferOwnerShip = mutation({
     if (!newOwner) throw new Error("New owner not found!");
     await ctx.db.patch(projectId, {
       ownerId: newOwner._id,
-      activities: project.activities.concat([
-        {
-          userId: callerId,
-          activity: "transferred ownership",
-          timestamp: Date.now(),
-        },
-      ]),
+    });
+    await ctx.db.insert("activities", {
+      entityType: "project",
+      entityId: project._id,
+      userId: user._id,
+      activity: "transferred ownership",
+      timestamp: Date.now(),
     });
     return { success: true };
   },
@@ -78,14 +78,14 @@ export const update = mutation({
     });
     await ctx.db.patch(project._id, {
       name: newName.trim(),
-      activities: project.activities.concat([
-        {
-          userId: caller._id,
-          activity: "Updated project name",
-          timestamp: Date.now(),
-        },
-      ]),
       updatedAt: Date.now(),
+    });
+    await ctx.db.insert("activities", {
+      entityType: "project",
+      entityId: project._id,
+      userId: caller._id,
+      activity: "Updated project name",
+      timestamp: Date.now(),
     });
 
     const updatedProject = await ctx.db.get(project._id);
@@ -178,16 +178,16 @@ export const addVariables = mutation({
       });
     }
     await ctx.db.patch(project._id, {
-      activities: project.activities.concat([
-        {
-          userId: user._id,
-          activity: "Added variables!",
-          timestamp: Date.now(),
-        },
-      ]),
       updatedAt: Date.now(),
     });
-    return { variables };
+    await ctx.db.insert("activities", {
+      entityType: "project",
+      entityId: project._id,
+      userId: user._id,
+      activity: "Added variables!",
+      timestamp: Date.now(),
+    });
+    return { success: true };
   },
 });
 
@@ -204,6 +204,7 @@ export const updateVariables = mutation({
       callerId,
       ctx,
     });
+    const now = Date.now();
     for (const variable of variables) {
       const existing = await ctx.db
         .query("variables")
@@ -214,9 +215,27 @@ export const updateVariables = mutation({
       if (!existing) throw new Error(`Variable not found!`);
 
       await ctx.db.patch(existing._id, {
+        previousValue: [
+          {
+            updatedBy: user._id,
+            value: existing.value,
+            updatedAt: now,
+          },
+        ],
         value: variable.value,
       });
     }
+    await ctx.db.patch(project._id, {
+      updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      entityType: "project",
+      entityId: project._id,
+      userId: user._id,
+      activity: "Updated variables",
+      timestamp: now,
+    });
+    return { success: true };
   },
 });
 

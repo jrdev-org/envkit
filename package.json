@@ -38,7 +38,7 @@
     "url": "https://envkit.sh"
   },
   "license": "ISC",
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@10.18.2",
   "devDependencies": {
     "@types/node": "^24.3.0",
     "dotenv": "^17.2.2",

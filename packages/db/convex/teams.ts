@@ -26,17 +26,17 @@ export const createPersonal = mutation({
     const teamId = await ctx.db.insert("teams", {
       name,
       ownerId: owner._id,
-      activities: [
-        {
-          userId: owner._id,
-          activity: "team created",
-          timestamp: now,
-        },
-      ],
       state: "active",
       type: "personal",
       maxMembers: 1,
       updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      entityType: "team",
+      entityId: teamId,
+      userId: owner._id,
+      activity: "team created",
+      timestamp: now,
     });
 
     const newTeam = await ctx.db.get(teamId);
@@ -77,17 +77,17 @@ export const create = mutation({
     const teamId = await ctx.db.insert("teams", {
       name,
       ownerId: owner._id,
-      activities: [
-        {
-          userId: owner._id,
-          activity: "team created",
-          timestamp: now,
-        },
-      ],
       state: "active",
       type: "personal",
       maxMembers,
       updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      entityType: "team",
+      entityId: teamId,
+      userId: owner._id,
+      activity: "team created",
+      timestamp: now,
     });
 
     const newTeam = await ctx.db.get(teamId);
@@ -184,13 +184,13 @@ export const remove = mutation({
         deletedAt: now,
         state: "deleted",
         updatedAt: now,
-        activities: existing.activities.concat([
-          {
-            userId: caller._id,
-            activity: "team deleted",
-            timestamp: now,
-          },
-        ]),
+      });
+      await ctx.db.insert("activities", {
+        entityType: "team",
+        entityId: existing._id,
+        userId: caller._id,
+        activity: "team deleted",
+        timestamp: now,
       });
       return { deleted: true, type: "soft" };
     }
@@ -249,21 +249,21 @@ export const update = mutation({
       name: name ?? existing.name,
       maxMembers: maxMembers ?? existing.maxMembers,
       updatedAt: now,
-      activities: existing.activities.concat([
-        {
-          userId: caller._id,
-          activity: `team updated ${
-            (name && "name") || (maxMembers && "maxMembers")
-          }`,
-          timestamp: now,
-        },
-      ]),
+    });
+    await ctx.db.insert("activities", {
+      entityType: "team",
+      entityId: existing._id,
+      userId: caller._id,
+      activity: `team updated ${
+        (name && "name") || (maxMembers && "maxMembers")
+      }`,
+      timestamp: now,
     });
 
     const updatedTeam = await ctx.db.get(existing._id);
     if (!updatedTeam) throw new Error(`Team not found!`);
 
-    return { updated: true, updatedTeam };
+    return { updatedTeam };
   },
 });
 
@@ -323,6 +323,12 @@ export const acceptInvitation = mutation({
     if (!invitation) throw new Error(`Invitation not found!`);
     const team = await ctx.db.get(invitation.teamId);
     if (!team) throw new Error(`Team not found!`);
+    const teamMembers = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team", (q) => q.eq("teamId", team._id))
+      .collect();
+    if (teamMembers.length >= team.maxMembers)
+      throw new Error("Team is full! Please upgrade your plan.");
     const now = Date.now();
     // check if user exists
     let user = await ctx.db
@@ -339,14 +345,14 @@ export const acceptInvitation = mutation({
       if (!user) throw new Error(`User not found!`);
     }
     await ctx.db.patch(team._id, {
-      activities: team.activities.concat([
-        {
-          userId: invitation.invitedBy,
-          activity: `invited new user ${user._id} to team`,
-          timestamp: now,
-        },
-      ]),
       updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      entityType: "team",
+      entityId: team._id,
+      userId: invitation.invitedBy,
+      activity: `invited new user ${user.email} to team`,
+      timestamp: now,
     });
 
     const newTeamMember = await ctx.db.insert("teamMembers", {
@@ -373,6 +379,8 @@ export const removeMember = mutation({
   handler: async (ctx, { memberId, callerId }) => {
     const membership = await ctx.db.get(memberId);
     if (!membership) throw new Error(`Membership not found!`);
+    const member = await ctx.db.get(membership.userId);
+    if (!member) throw new Error(`Member not found!`);
     const { team, user: caller } = await getTeamAuthorized({
       callerId,
       teamId: membership.teamId,
@@ -381,14 +389,14 @@ export const removeMember = mutation({
     const now = Date.now();
     await ctx.db.delete(memberId);
     await ctx.db.patch(team._id, {
-      activities: team.activities.concat([
-        {
-          userId: caller._id,
-          activity: `removed member ${membership.userId} from team`,
-          timestamp: now,
-        },
-      ]),
       updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      entityType: "team",
+      entityId: team._id,
+      userId: caller._id,
+      activity: `removed member ${member.email} from team`,
+      timestamp: now,
     });
 
     return { team };

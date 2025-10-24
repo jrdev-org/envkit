@@ -33,7 +33,6 @@ export const create = mutation({
       allowLink,
       expiresAt,
       singleUse,
-      lastAccessedBy: [],
     });
     return { success: true };
   },
@@ -68,13 +67,12 @@ export const retrieve = mutation({
     if (token.singleUse) {
       await ctx.db.delete(token._id);
     } else {
-      await ctx.db.patch(token._id, {
-        lastAccessedBy: token.lastAccessedBy.concat([
-          {
-            userId: caller._id,
-            timestamp: Date.now(),
-          },
-        ]),
+      await ctx.db.insert("activities", {
+        entityType: "token",
+        entityId: token._id,
+        userId: caller._id,
+        activity: `token used by ${caller.email}`,
+        timestamp: Date.now(),
       });
     }
 
