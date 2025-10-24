@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "rootDir": ".",
+    "paths": {
+      "@api/*": ["src/*"]
+    }
+  },
+  "references": [{ "path": "../../packages/db" }],
+  "include": ["src/**/*.ts", "convex/**/*.ts"],
+  "exclude": ["node_modules"]
+}
