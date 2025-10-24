@@ -1,239 +1,328 @@
+import { mutation, query } from "../convex/_generated/server.js";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server.js";
-import { tokenAndHash } from "./helpers.js";
+import { getCaller } from "./helpers.js";
 
 export const create = mutation({
   args: {
-    authId: v.string(),
-    name: v.string(),
     email: v.string(),
+    tier: v.union(v.literal("free"), v.literal("pro")),
   },
   handler: async (ctx, args) => {
-    const authId = args.authId.trim();
-    const email = args.email.trim().toLowerCase();
-
-    // 1) Prefer lookup by authId.
-    const existingByAuth = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", authId))
-      .first();
-
-    if (existingByAuth !== null) {
-      throw new Error(`User already exists.`);
-    }
-
-    // 1.5 then lookup by email.
-    const existingByEmail = await ctx.db
+    const { email, tier } = args;
+    const existing = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", email))
-      .first();
+      .unique();
+    if (existing) throw new Error(`User already exists!`);
 
-    if (existingByEmail !== null) {
-      throw new Error(`User already exists.`);
-    }
-
-    // 2) Create user
-    const newUserId = await ctx.db.insert("users", {
-      authId,
-      tier: "free",
-      name: args.name,
+    const userId = await ctx.db.insert("users", {
       email,
+      tier,
       updatedAt: Date.now(),
     });
 
-    // 3) Create user's team
-    const newTeamId = await ctx.db.insert("teams", {
-      name: `${args.name.trim()}'s Team`,
-      ownerId: newUserId,
-      lastAction: "created",
-      state: "active",
-      type: "personal",
-      maxMembers: 2,
-      updatedAt: Date.now(),
-    });
-
-    // 4) create team salt
-    const { tokenHash: salt } = await tokenAndHash();
-    await ctx.db.insert("salts", {
-      teamId: newTeamId,
-      salt: salt,
-    });
-
-    // 5 add user to team
-    await ctx.db.insert("teamMembers", {
-      teamId: newTeamId,
-      userId: newUserId,
-      role: "admin",
-      joinedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    return { newUserId, newTeamId };
-  },
-});
-
-export const get = query({
-  args: { authId: v.string() },
-  handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", args.authId))
-      .first();
-
-    if (!user) throw new Error("User not found");
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User not found!");
     return user;
   },
 });
 
-export const updateUser = mutation({
+export const get = query({
   args: {
-    id: v.id("users"),
-    opts: v.optional(
-      v.object({
-        name: v.optional(v.string()),
-        email: v.optional(v.string()),
-        tier: v.optional(v.union(v.literal("free"), v.literal("pro"))),
-      })
-    ),
+    userId: v.id("users"),
+  },
+  async handler({ db }, { userId }) {
+    const user = await db.get(userId);
+    if (!user) throw new Error("User not found!");
+    return user;
+  },
+});
+
+export const upgrade = mutation({
+  args: {
+    email: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.id);
-    if (!user) throw new Error("User not found");
+    const { email } = args;
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (!existing) throw new Error(`User not found!`);
+    if (existing.tier === "pro")
+      throw new Error("User already has a pro account!");
 
-    if (!args.opts || Object.keys(args.opts).length === 0) return user;
+    await ctx.db.patch(existing._id, {
+      tier: "pro",
+      updatedAt: Date.now(),
+    });
 
-    const patch: Record<string, unknown> = { ...args.opts };
-
-    if (typeof patch.email === "string") {
-      const normalizedEmail = (patch.email as string).trim().toLowerCase();
-      // Only check if email is actually changing
-      if (normalizedEmail !== user.email) {
-        const conflict = await ctx.db
-          .query("users")
-          .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
-          .first();
-        if (conflict && conflict._id !== user._id) {
-          throw new Error("Email already in use");
-        }
-      }
-      patch.email = normalizedEmail;
-    }
-
-    // Remove undefined keys so you don't overwrite existing data
-    for (const key in patch) {
-      // eslint-disable-next-line no-prototype-builtins
-      if (
-        Object.prototype.hasOwnProperty.call(patch, key) &&
-        patch[key] === undefined
-      ) {
-        delete patch[key];
-      }
-    }
-
-    patch.updatedAt = Date.now();
-
-    await ctx.db.patch(args.id, patch);
-
-    // Return the updated user (merge view)
-    return { ...user, ...patch };
+    const user = await ctx.db.get(existing._id);
+    if (!user) throw new Error("User not found!");
+    return user;
   },
 });
 
 export const remove = mutation({
   args: {
-    id: v.id("users"),
-    newOwnerId: v.optional(v.id("users")),
-    forceDeleteProjects: v.optional(v.boolean()),
+    userId: v.id("users"),
+    purge: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.id);
-    if (!user) throw new Error("User not found");
+    const { userId, purge } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
 
-    // TODO: Clean up related entities
-    // - Remove from teamMembers
-    const teamMemberships = await ctx.db
-      .query("teamMembers")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.eq(q.field("removedAt"), undefined))
-      .collect();
-    for (const teamMembership of teamMemberships) {
-      await ctx.db.delete(teamMembership._id);
-    }
-
-    // - Handle team ownership transfer or deletion
-    const teams = await ctx.db
-      .query("teams")
-      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
-      .collect();
-
-    if (args.newOwnerId) {
-      // Transfer ownership
-      const newOwner = await ctx.db.get(args.newOwnerId);
-      if (!newOwner) {
-        throw new Error("Invalid new owner");
-      }
-
+    if (purge) {
+      // remove user's teams
+      const teams = await ctx.db
+        .query("teams")
+        .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+        .collect();
       for (const team of teams) {
-        if (team.ownerId === user._id) {
-          // Transfer ownership
-          await ctx.db.patch(team._id, {
-            ownerId: newOwner._id,
-            lastAction: "team_transferred",
-            updatedAt: Date.now(),
-          });
-        } else {
-          // delete user projects
-          const projects = await ctx.db
-            .query("projects")
-            .withIndex("by_team", (q) => q.eq("teamId", team._id))
+        // remove user's projects
+        const projects = await ctx.db
+          .query("projects")
+          .withIndex("by_team", (q) => q.eq("teamId", team._id))
+          .collect();
+        for (const project of projects) {
+          // remove user's variables
+          const variables = await ctx.db
+            .query("variables")
+            .withIndex("by_project", (q) => q.eq("projectId", project._id))
             .collect();
-
-          if (args.forceDeleteProjects) {
-            for (const project of projects) {
-              await ctx.db.delete(project._id);
-            }
-          } else {
-            for (const project of projects) {
-              await ctx.db.patch(project._id, {
-                deletedAt: Date.now(),
-                lastAction: "project_deleted",
-                updatedAt: Date.now(),
-              });
-            }
+          for (const variable of variables) {
+            await ctx.db.delete(variable._id);
           }
-
-          // Delete team
-          await ctx.db.patch(team._id, {
-            state: "deleted",
-            deletedAt: Date.now(),
-            lastAction: "team_deleted",
-            updatedAt: Date.now(),
-          });
-          // - Clean up associated salts
-          const salts = await ctx.db
-            .query("salts")
-            .withIndex("by_team", (q) => q.eq("teamId", team._id))
-            .collect();
-          for (const salt of salts) {
-            await ctx.db.delete(salt._id);
-          }
+          await ctx.db.delete(project._id);
         }
+        await ctx.db.delete(team._id);
       }
+      // remove user's sharetokens
+      const shares = await ctx.db
+        .query("shareTokens")
+        .withIndex("by_creator", (q) => q.eq("createdBy", userId))
+        .collect();
+      for (const share of shares) {
+        await ctx.db.delete(share._id);
+      }
+      // remove user's devices
+      const devices = await ctx.db
+        .query("devices")
+        .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+        .collect();
+      for (const device of devices) {
+        // remove user's cli sessions
+        const cliSessions = await ctx.db
+          .query("cliSessions")
+          .withIndex("by_deviceId", (q) => q.eq("deviceId", device._id))
+          .collect();
+        for (const cliSession of cliSessions) {
+          await ctx.db.delete(cliSession._id);
+        }
+        await ctx.db.delete(device._id);
+      }
+      await ctx.db.delete(existing._id);
+      return { deleted: true, type: "purge" };
     }
 
-    // add user to deletedUsers table
     await ctx.db.insert("deletedUsers", {
-      userId: user._id,
-      authId: user.authId,
-      name: user.name,
-      email: user.email,
-      tier: user.tier,
-      createdAt: user._creationTime,
+      userId: existing._id,
+      tier: existing.tier,
+      email: existing.email,
+      createdAt: existing._creationTime,
       deletedAt: Date.now(),
     });
+    return { deleted: true, type: "soft" };
+  },
+});
 
-    await ctx.db.delete(args.id);
+export const getShareTokens = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
 
-    return user;
+    const shareTokens = await ctx.db
+      .query("shareTokens")
+      .withIndex("by_creator", (q) => q.eq("createdBy", userId))
+      .collect();
+    return shareTokens;
+  },
+});
+
+export const getDevices = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
+
+    const devices = await ctx.db
+      .query("devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .collect();
+    return devices;
+  },
+});
+
+export const getCliSessions = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
+
+    const devices = await ctx.db
+      .query("devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .collect();
+
+    const cliSessions = [];
+    for (const device of devices) {
+      const sessions = await ctx.db
+        .query("cliSessions")
+        .withIndex("by_deviceId", (q) => q.eq("deviceId", device._id))
+        .collect();
+      cliSessions.push(...sessions);
+    }
+    return cliSessions;
+  },
+});
+
+export const getPersonalTeam = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async ({ db }, { userId }) => {
+    const user = await db.get(userId);
+    if (!user) throw new Error("User not found!");
+    const team = await db
+      .query("teams")
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+      .filter((q) => q.eq(q.field("type"), "personal"))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .unique();
+
+    if (!team) throw new Error("Team not found!");
+
+    return team;
+  },
+});
+
+export const getOwnedTeams = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
+
+    const teams = await ctx.db
+      .query("teams")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .collect();
+    return teams;
+  },
+});
+
+export const getOwnedProjects = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error(`User not found!`);
+
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+      .collect();
+    return projects;
+  },
+});
+
+export const getMemberTeams = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
+
+    const memberships = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    const teams = [];
+    for (const membership of memberships) {
+      const team = await ctx.db.get(membership.teamId);
+      if (team)
+        teams.push({
+          id: team._id,
+          name: team.name,
+          role: membership.role,
+          projects: membership.allowedProjects,
+          activities: team.activities,
+          jonedAt: membership.joinedAt,
+          updatedAt: team.updatedAt,
+        });
+    }
+    return teams;
+  },
+});
+
+export const getMemberProjects = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db.get(userId);
+    if (!existing) throw new Error(`User not found!`);
+
+    const memberships = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    const projects = [];
+    for (const membership of memberships) {
+      for (const projectId of membership.allowedProjects) {
+        const project = await ctx.db.get(projectId);
+        if (project)
+          projects.push({
+            id: project._id,
+            name: project.name,
+            activities: project.activities,
+            updatedAt: project.updatedAt,
+            role: membership.role,
+          });
+      }
+    }
+    return projects;
+  },
+});
+
+export const getOwnedDevices = query({
+  args: {
+    userId: v.id("users"),
+  },
+  async handler(ctx, { userId }) {
+    const user = await getCaller({ callerId: userId, ctx });
+    const devices = await ctx.db
+      .query("devices")
+      .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+      .collect();
+    return devices;
   },
 });

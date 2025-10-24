@@ -1,74 +1,10 @@
+import { mutation } from "./_generated/server.js";
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server.js";
+import { getCaller } from "./helpers.js";
 
-// Get device info by deviceId
-export const get = query({
-  args: {
-    deviceId: v.string(),
-    userId: v.id("users"),
-  },
-  async handler(ctx, { deviceId, userId }) {
-    const device = await ctx.db
-      .query("devices")
-      .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceId))
-      .first();
-    if (!device || device.deletedAt) {
-      throw new Error("Device not found or deleted");
-    }
-    if (device.userId !== userId) {
-      throw new Error("You are not authorized to view this device info!");
-    }
-    return device;
-  },
-});
-
-export const getById = query({
-  args: { deviceId: v.string() },
-  handler: async (ctx, { deviceId }) => {
-    const device = await ctx.db
-      .query("devices")
-      .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceId))
-      .first();
-    if (!device) {
-      return "not_found";
-    }
-    if (device.deletedAt) {
-      return "deleted";
-    }
-    return "found";
-  },
-});
-
-export const remove = mutation({
-  args: {
-    deviceId: v.string(),
-    userId: v.id("users"),
-  },
-  async handler(ctx, { deviceId, userId }) {
-    const device = await ctx.db
-      .query("devices")
-      .withIndex("by_deviceId", (q) => q.eq("deviceId", deviceId))
-      .first();
-    if (!device || device.deletedAt) {
-      throw new Error("Device not found or deleted!");
-    }
-    if (device.userId !== userId) {
-      throw new Error("You are not authorized to delete this device!");
-    }
-
-    await ctx.db.patch(device._id, {
-      deletedAt: Date.now(),
-      lastAction: "deleted_device",
-    });
-
-    return { success: true };
-  },
-});
-
-// Register device after authentication
-export const registerDevice = mutation({
-  args: {
-    userId: v.id("users"),
+export const register = mutation({
+  args: v.object({
+    ownerId: v.id("users"),
     deviceId: v.string(),
     deviceName: v.optional(v.string()),
     platform: v.string(),
@@ -76,91 +12,46 @@ export const registerDevice = mutation({
     username: v.string(),
     nodeVersion: v.string(),
     cliVersion: v.string(),
-  },
-  async handler(ctx, args) {
-    const existing = await ctx.db
-      .query("devices")
-      .withIndex("by_deviceId", (q) => q.eq("deviceId", args.deviceId))
-      .first();
-
-    if (existing && existing.deletedAt) {
-      throw new Error("Device has been deleted");
-    }
-
-    const now = Date.now();
-
-    if (existing) {
-      // Update existing device
-      await ctx.db.patch(existing._id, {
-        ...args,
-        lastAction: "updated",
-        lastUsedAt: now,
-      });
-      return { deviceId: existing._id, updated: true };
-    }
-
-    // Create new device
+  }),
+  handler: async (ctx, args) => {
+    const owner = await getCaller({ callerId: args.ownerId, ctx });
     const newDeviceId = await ctx.db.insert("devices", {
       ...args,
-      lastAction: "created",
-      lastUsedAt: now,
+      activities: [
+        {
+          userId: owner._id,
+          activity: "created",
+          timestamp: Date.now(),
+        },
+      ],
     });
 
-    return { deviceId: newDeviceId, updated: false };
+    const device = await ctx.db.get(newDeviceId);
+    if (!device) throw new Error("Device not found!");
+
+    return device;
   },
 });
 
-// List user's authenticated devices
-export const listWithSessions = query({
+export const remove = mutation({
   args: {
-    userId: v.id("users"),
+    id: v.id("devices"),
+    callerId: v.id("users"),
   },
-  async handler(ctx, { userId }) {
-    const devices = await ctx.db
-      .query("devices")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-
-    // Get active sessions for each device
-    const userSessions = await ctx.db
+  handler: async (ctx, { id, callerId }) => {
+    const caller = await getCaller({ callerId, ctx });
+    const device = await ctx.db.get(id);
+    if (!device) throw new Error("Device not found!");
+    if (device.ownerId !== caller._id) throw new Error("Not authorized!");
+    // delete all cli sessions on device
+    const sessions = await ctx.db
       .query("cliSessions")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .filter((q) => q.eq(q.field("status"), "authenticated"))
+      .withIndex("by_deviceId", (q) => q.eq("deviceId", device._id))
       .collect();
-
-    const sessionsByDevice = new Map<string, (typeof userSessions)[number]>();
-    for (const session of userSessions) {
-      if (
-        !sessionsByDevice.has(session.deviceId) ||
-        (sessionsByDevice.get(session.deviceId)?.lastUsedAt ?? 0) <
-          session.lastUsedAt
-      ) {
-        sessionsByDevice.set(session.deviceId, session);
-      }
+    for (const session of sessions) {
+      await ctx.db.delete(session._id).catch(() => {});
     }
-
-    const devicesWithSessions = devices.map((device) => {
-      const activeSession = sessionsByDevice.get(device.deviceId);
-      return {
-        ...device,
-        hasActiveSession: !!activeSession,
-        lastSessionActivity: activeSession?.lastUsedAt,
-      };
-    });
-
-    return devicesWithSessions;
-  },
-});
-
-export const listByUser = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.userId);
-    if (!user) throw new Error("User not found");
-    const devices = await ctx.db
-      .query("devices")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
-    return devices;
+    await ctx.db.delete(device._id);
+    return { success: true };
   },
 });

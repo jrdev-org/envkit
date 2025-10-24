@@ -17,11 +17,9 @@ import type * as cli from "../cli.js";
 import type * as devices from "../devices.js";
 import type * as helpers from "../helpers.js";
 import type * as projects from "../projects.js";
-import type * as salts from "../salts.js";
 import type * as teams from "../teams.js";
 import type * as tokens from "../tokens.js";
 import type * as users from "../users.js";
-import type * as variables from "../variables.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -36,11 +34,9 @@ declare const fullApi: ApiFromModules<{
   devices: typeof devices;
   helpers: typeof helpers;
   projects: typeof projects;
-  salts: typeof salts;
   teams: typeof teams;
   tokens: typeof tokens;
   users: typeof users;
-  variables: typeof variables;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

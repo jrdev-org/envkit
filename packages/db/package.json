@@ -10,23 +10,11 @@
     ".": {
       "import": "./dist/src/index.js",
       "types": "./dist/src/index.d.ts"
-    },
-    "./env": {
-      "import": "./dist/src/env.js",
-      "types": "./dist/src/env.d.ts"
-    },
-    "./encryption": {
-      "import": "./dist/src/encryption.js",
-      "types": "./dist/src/encryption.d.ts"
-    },
-    "./types": {
-      "import": "./dist/convex/_generated/dataModel.js",
-      "types": "./dist/convex/_generated/dataModel.d.ts"
     }
   },
   "files": [
     "dist",
-    "convex/_generated",
+    "convex",
     "*.d.ts"
   ],
   "engines": {
@@ -48,6 +36,8 @@
     "@t3-oss/env-core": "^0.13.8",
     "convex": "^1.27.0",
     "dotenv": "^17.2.2",
+    "nanoid": "^5.1.6",
+    "trysafely": "^4.0.0",
     "valibot": "^1.1.0"
   },
   "devDependencies": {

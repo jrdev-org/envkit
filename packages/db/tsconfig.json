@@ -8,9 +8,10 @@
     "declaration": true,
     "emitDeclarationOnly": false,
     "composite": true,
+    "strict": false,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@db/*": ["src/*"]
     }
   }
 }

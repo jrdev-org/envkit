@@ -1,56 +1,100 @@
-export async function tokenAndHash(): Promise<{
-  token: string;
-  tokenHash: string;
-}> {
-  // 1. Generate random token (base64url-safe)
-  const randomBytes = new Uint8Array(32);
-  crypto.getRandomValues(randomBytes);
+import type { DataModel, Id } from "./_generated/dataModel.js";
+import { GenericMutationCtx, GenericQueryCtx } from "convex/server";
 
-  const token = btoa(String.fromCharCode(...Array.from(randomBytes)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+type Ctx = GenericMutationCtx<DataModel> | GenericQueryCtx<DataModel>;
 
-  // 2. Compute token hash
-  const tokenHash = await getHashFromToken(token);
-
-  return { token, tokenHash };
+export async function getCaller({
+  ctx,
+  callerId,
+}: {
+  ctx: Ctx;
+  callerId: Id<"users">;
+}) {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_id", (q) => q.eq("_id", callerId))
+    .first();
+  if (!user) throw new Error("User not found");
+  return user;
 }
 
-export async function getHashFromToken(token: string): Promise<string> {
-  // 1. Decode the token
-  const encoder = new TextEncoder();
-  const data = encoder.encode(token);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+export async function getProjectAuthorized({
+  ctx,
+  callerId,
+  projectId,
+}: {
+  ctx: Ctx;
+  callerId: Id<"users">;
+  projectId: Id<"projects">;
+}) {
+  const project = await ctx.db
+    .query("projects")
+    .withIndex("by_id", (q) => q.eq("_id", projectId))
+    .first();
+  if (!project) throw new Error("Project not found");
+  const user = await getCaller({ ctx, callerId });
+  if (!user) throw new Error("User not found");
 
-  // convert ArrayBuffer -> hex string
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const tokenHash = hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const membership = await ctx.db
+    .query("teamMembers")
+    .withIndex("by_team_and_user", (q) =>
+      q.eq("teamId", project.teamId).eq("userId", user._id)
+    )
+    .first();
+  if (!membership) throw new Error("User not a member of project");
 
-  return tokenHash;
+  const allowedProjects = new Set(membership.allowedProjects);
+  const authorized =
+    membership.role === "admin" ||
+    project.ownerId === user._id ||
+    allowedProjects.has(projectId);
+
+  if (!authorized) throw new Error("User not authorized");
+
+  return {
+    user: {
+      ...user,
+      role: membership.role,
+      owner: project.ownerId === user._id,
+    },
+    project,
+  };
 }
 
-// If you’re using Web Crypto (browser-safe)
-export async function hashSHA256Hex(data: string): Promise<string> {
-  const input = new TextEncoder().encode(data);
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  const view = new Uint8Array(digest);
-  return Array.from(view)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+export async function getTeamAuthorized({
+  ctx,
+  callerId,
+  teamId,
+}: {
+  ctx: Ctx;
+  callerId: Id<"users">;
+  teamId: Id<"teams">;
+}) {
+  const team = await ctx.db
+    .query("teams")
+    .withIndex("by_id", (q) => q.eq("_id", teamId))
+    .first();
+  if (!team) throw new Error("Team not found");
+  const user = await getCaller({ ctx, callerId });
+  if (!user) throw new Error("User not found");
 
-// Compute ETAG asynchronously
-export async function computeETag(
-  vars: Array<{ name: string; value: string }>
-): Promise<string> {
-  const sorted = vars
-    .map((v) => `${v.name}=${v.value}`)
-    .sort()
-    .join("&");
+  const membership = await ctx.db
+    .query("teamMembers")
+    .withIndex("by_team_and_user", (q) =>
+      q.eq("teamId", teamId).eq("userId", user._id)
+    )
+    .first();
+  if (!membership) throw new Error("User not a member of team");
 
-  // One-shot hash of the concatenated string
-  return await hashSHA256Hex(sorted);
+  const authorized = membership.role === "admin" || team.ownerId === user._id;
+
+  if (!authorized) throw new Error("User not authorized");
+  return {
+    user: {
+      ...user,
+      role: membership.role,
+      owner: team.ownerId === user._id,
+    },
+    team,
+  };
 }
