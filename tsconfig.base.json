@@ -11,14 +11,6 @@
     "resolveJsonModule": true,
     "isolatedModules": false,
     "composite": true,
-    "baseUrl": ".",
-    "rootDir": ".",
-    "outDir": "dist",
-    "paths": {
-      "@envkit/db": ["packages/db/src"],
-      "@envkit/utils": ["packages/utils/src"],
-      "@envkit/api": ["apps/api/src"]
-    },
     "declaration": true
   }
 }

@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@envkit/db": "workspace:*",
+    "@envkit/db": "file:../../packages/db",
     "@hono/node-server": "^1.19.5",
     "@hono/valibot-validator": "^0.5.3",
     "@t3-oss/env-core": "^0.13.8",
