@@ -13,7 +13,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build-cli": "tsc -p tsconfig.json"
   },
   "exports": {
     ".": "./dist/src/index.js"
@@ -37,6 +37,7 @@
     "hono": "^4.9.8",
     "open": "^10.2.0",
     "ora": "^9.0.0",
+    "trysafely": "^4.0.0",
     "valibot": "^1.1.0"
   }
 }

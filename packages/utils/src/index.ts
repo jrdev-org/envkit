@@ -1,14 +1,14 @@
-import * as crypto from "crypto";
+import * as crypto from "node:crypto";
+// import { env } from "./env.js";
+import { api, type Id } from "@envkit/db";
 
-interface User {
-  id: string;
-  salt: string; // Store this securely in your database
-}
+const convex: any = {};
 
-export class MessageEncryption {
+export class VariableEncryption {
   private static readonly ALGORITHM = "aes-256-gcm";
   private static readonly KEY_LENGTH = 32; // 256 bits
-  private static readonly IV_LENGTH = 16; // 128 bits
+  private static readonly IV_LENGTH = 12; // 96 bits
+  private static readonly VERSION = "v1";
 
   /**
    * Generate a unique salt for a new user
@@ -20,126 +20,142 @@ export class MessageEncryption {
   /**
    * Derive a key from the user's salt
    */
-  private static deriveKey(
-    salt: string,
-    pepper: string = process.env.ENCRYPTION_PEPPER || ""
-  ): Buffer {
-    if (!pepper) {
-      throw new Error("Encryption pepper not configured");
-    }
-    return crypto.pbkdf2Sync(salt, pepper, 600000, this.KEY_LENGTH, "sha256");
+  private static deriveKey(salt: string): Buffer {
+    const pepper = process.env.ENCRYPTION_PEPPER!;
+    // OWASP recommends >=310k iterations for PBKDF2 in 2025, adjust as needed
+    return crypto.pbkdf2Sync(pepper, salt, 10000, this.KEY_LENGTH, "sha256");
   }
 
   /**
-   * Encrypt a message using the user's salt
+   * Encrypt a variable using the user's salt
    */
-  static encryptMessage(message: string, userSalt: string): string {
-    if (!message || !userSalt) {
-      throw new Error("Message or userSalt is empty");
-    }
+  static encryptVariable(variable: string, userSalt: string): string {
     try {
       const key = this.deriveKey(userSalt);
       const iv = crypto.randomBytes(this.IV_LENGTH);
       const cipher = crypto.createCipheriv(this.ALGORITHM, key, iv);
 
-      let encrypted = cipher.update(message, "utf8", "hex");
-      encrypted += cipher.final("hex");
+      let ciphertext = cipher.update(variable, "utf8", "hex");
+      ciphertext += cipher.final("hex");
 
       const authTag = cipher.getAuthTag();
 
-      // Combine IV + authTag + encrypted data
-      const combined =
-        iv.toString("hex") + ":" + authTag.toString("hex") + ":" + encrypted;
-      return combined;
+      // Canonical format: JSON → base64
+      const payload = {
+        v: this.VERSION,
+        iv: iv.toString("hex"),
+        ct: ciphertext,
+        tag: authTag.toString("hex"),
+      };
+
+      return Buffer.from(JSON.stringify(payload)).toString("base64");
     } catch (error) {
-      throw new Error(
-        `Encryption failed: ${error instanceof Error ? error.message : String(error)}`
+      console.error(
+        `Encryption failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
+      throw new Error("Encryption failed");
     }
   }
 
   /**
-   * Decrypt a message using the user's salt
+   * Decrypt a variable using the user's salt
    */
-  static decryptMessage(encryptedData: string, userSalt: string): string {
-    if (!encryptedData || !userSalt) {
-      throw new Error("Message or userSalt is empty");
-    }
+  static decryptVariable(encodedData: string, userSalt: string): string {
     try {
-      const parts = encryptedData.split(":");
-      if (parts.length !== 3) {
-        throw new Error("Invalid encrypted data format");
+      // What went wrong:
+      // The `encodedData` can be an empty string if a variable was "deleted"
+      // by setting its value to an empty string. An empty string is not valid
+      // base64 and will cause Buffer.from to return an empty buffer.
+      // JSON.parse('') then throws an "Unexpected end of JSON input" error.
+      // The fix is to check for an empty or null `encodedData` and return an
+      // empty string, which is the logical value for a deleted or empty variable.
+      if (!encodedData) {
+        return "";
+      }
+      const decoded = Buffer.from(encodedData, "base64").toString("utf8");
+      const payload = JSON.parse(decoded);
+
+      if (!payload.v || payload.v !== this.VERSION) {
+        throw new Error("Unsupported encryption version");
       }
 
-      const iv = Buffer.from(parts[0], "hex");
-      const authTag = Buffer.from(parts[1], "hex");
-      const encrypted = parts[2];
+      const iv = Buffer.from(payload.iv, "hex");
+      const ciphertext = payload.ct;
+      const authTag = Buffer.from(payload.tag, "hex");
 
       const key = this.deriveKey(userSalt);
       const decipher = crypto.createDecipheriv(this.ALGORITHM, key, iv);
       decipher.setAuthTag(authTag);
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
+      let decrypted = decipher.update(ciphertext, "hex", "utf8");
       decrypted += decipher.final("utf8");
 
       return decrypted;
     } catch (error) {
-      throw new Error(
-        `Decryption failed: ${error instanceof Error ? error.message : String(error)}`
+      console.error(
+        `Decryption failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
+      throw new Error("Decryption failed");
     }
   }
 }
 
-// Usage example
-export class UserService {
-  private users: Map<string, User> = new Map();
+// export class TeamService {
+//   private teamId: Id<"teams">;
+//   private callerId: Id<"users">;
 
-  /**
-   * Create a new user with a unique salt
-   */
-  createUser(userId: string): User {
-    if (this.users.has(userId)) {
-      throw new Error(`User ${userId} already exists`);
-    }
+//   constructor(teamId: Id<"teams">, callerId: Id<"users">) {
+//     this.teamId = teamId;
+//     this.callerId = callerId;
+//   }
 
-    const user: User = {
-      id: userId,
-      salt: MessageEncryption.generateSalt(),
-    };
+//   async getUserAndTeam() {
+//     const teams = await convex
+//       .query(api.teams.get, { id: this.callerId })
+//       .catch((e: any) => {
+//         throw new Error(
+//           `Database error, ${e instanceof Error ? e.message : String(e)}`
+//         );
+//       });
+//     const team = teams.find((t) => t._id === this.teamId);
+//     if (!team) {
+//       throw new Error("Team not found");
+//     }
 
-    this.users.set(userId, user);
-    return user;
-  }
+//     return { userId: team.ownerId, team };
+//   }
 
-  /**
-   * Get user by ID
-   */
-  getUser(userId: string): User | undefined {
-    return this.users.get(userId);
-  }
+//   async createSalt(): Promise<string> {
+//     const { userId, team } = await this.getUserAndTeam();
+//     const salt = VariableEncryption.generateSalt();
+//     await convex.mutation(api.salts.create, {
+//       teamId: team._id,
+//       salt,
+//       callerId: userId,
+//     });
+//     return salt;
+//   }
 
-  /**
-   * Encrypt a message for a specific user
-   */
-  encryptUserMessage(userId: string, message: string): string {
-    const user = this.getUser(userId);
-    if (!user) {
-      throw new Error("User not found");
-    }
+//   async getSalt() {
+//     const { team } = await this.getUserAndTeam();
+//     const existing = await convex.query(api.salts.get, { teamId: team._id });
+//     if (existing) {
+//       return existing.salt;
+//     }
+//     return this.createSalt();
+//   }
 
-    return MessageEncryption.encryptMessage(message, user.salt);
-  }
+//   async encryptVariable(value: string) {
+//     const salt = await this.getSalt();
+//     return VariableEncryption.encryptVariable(value, salt);
+//   }
 
-  /**
-   * Decrypt a message for a specific user
-   */
-  decryptUserMessage(userId: string, encryptedMessage: string): string {
-    const user = this.getUser(userId);
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    return MessageEncryption.decryptMessage(encryptedMessage, user.salt);
-  }
-}
+//   async decryptVariable(encryptedValue: string) {
+//     const salt = await this.getSalt();
+//     return VariableEncryption.decryptVariable(encryptedValue, salt);
+//   }
+// }
