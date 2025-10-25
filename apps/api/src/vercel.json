@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm turbo run build",
+  "buildCommand": "pnpm install --fetch-retries=5 && pnpm turbo run build",
   "framework": "hono"
 }
