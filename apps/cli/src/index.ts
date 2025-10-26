@@ -1,34 +1,15 @@
-import { dbApi, safeCall } from "@envkit/db";
-import dotenv from "dotenv";
-import path from "path";
+import type { AppType } from "@envkit/api";
+import { hc } from "hono/client";
 
-dotenv.config({
-  path: path.join(process.cwd(), ".env.local"),
-});
+const client = hc<AppType>("https://localhost:8787");
 
-async function main() {
-  const me = await safeCall(
-    async () => await dbApi.users.get(process.env.TEST_USER_ID!)
-  )();
-  if ("error" in me) {
-    console.log(me.error);
-    return;
-  }
-  console.table(me);
-  return;
-}
+const apiClient = {
+  projects: client.api.v1.projects,
+  users: client.api.v1.users,
+  tokens: client.api.v1.tokens,
+  cli: client.api.v1.cli,
+  devices: client.api.v1.devices,
+  teams: client.api.v1.teams,
+};
 
-main();
-
-// try {
-//   const me = await dbApi.users.get(process.env.TEST_USER_ID!);
-//   console.table(me);
-// } catch (error) {
-//   if (error instanceof Error) {
-//     console.log(
-//       error.message.includes("fetch failed") ? "Network error" : error.message
-//     );
-//   } else {
-//     console.log(error);
-//   }
-// }
+export const api = apiClient;
