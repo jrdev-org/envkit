@@ -1,29 +1,31 @@
 #!/usr/bin/env node
+import * as crypto from "node:crypto";
+import { CLI_VERSION } from "@cli/constants.js";
+import { api } from "@cli/index.js";
 import {
   getStoredAuthToken,
   requireAuthToken,
   revokeSesion,
   startAuthServer,
   storeAuthToken,
-} from "@/lib/auth.js";
-import { getDeviceInfo } from "@/lib/device.js";
-import { log } from "@/lib/logger.js";
-import { dbApi, safeCall } from "@envkit/db";
+} from "@cli/lib/auth.js";
+import { getDeviceInfo } from "@cli/lib/device.js";
+import { env } from "@cli/lib/env.js";
+import { log } from "@cli/lib/logger.js";
+import { pickAvailablePort } from "@cli/lib/port.js";
 import { confirm } from "@inquirer/prompts";
-import { env } from "@/lib/env.js";
-import { type Id } from "@envkit/db/env";
-import { Command } from "commander";
-import { pickAvailablePort } from "@/lib/port.js";
-import open from "open";
-import * as crypto from "crypto";
 import chalk from "chalk";
+import { Command } from "commander";
+import open from "open";
 
 export async function runAuth() {
   // ensure user isn't already logged in
   const existing = await getStoredAuthToken();
   if (existing) {
     log.info(
-      `You are already logged in. Please run ${chalk.bold("envkit auth logout")} to log out.`
+      `You are already logged in. Please run ${chalk.bold(
+        "envkit auth logout"
+      )} to log out.`
     );
     process.exit(0);
   }
@@ -70,17 +72,33 @@ export async function runAuth() {
 
     // register/update device
     try {
-      const deviceState = await dbApi.devices.getById(deviceInfo.deviceId);
-      if (deviceState === "not_found") {
-        const res = await dbApi.devices.register({
-          userId: userId as Id<"users">,
-          ...deviceInfo,
-        });
-        if (res.updated) {
-          log.bold("Updated your device Info");
-        } else {
-          log.success("Device Info stored successfully");
+      const res = await api.users[":userId"].devices.$get({
+        param: {
+          userId,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const { devices } = data;
+        const deviceExists = devices.some(
+          (d) => d.deviceId === deviceInfo.deviceId
+        );
+        if (!deviceExists) {
+          const res = await api.devices.register.$post({
+            json: {
+              ...deviceInfo,
+              cliVersion: CLI_VERSION,
+              ownerId: userId,
+            },
+          });
+          if (res.ok) {
+            log.info("Device registered!");
+          }
+          const err = await res.text();
+          log.trace(err);
         }
+        const err = await res.text();
+        log.trace(err);
       }
     } catch (e) {
       e instanceof Error
@@ -94,11 +112,12 @@ export async function runAuth() {
     storeSpinner.start();
 
     // init session
-    const { initialized, tempToken } = await dbApi.cli.init({
-      deviceId: deviceInfo.deviceId,
-      userId: userId as unknown as Id<"users">,
-      userAgent: userAgent,
-      tempToken: crypto.randomBytes(32).toString("hex"),
+    const res = await api.cli.init.$post({
+      json: {
+        deviceId: deviceInfo.deviceId,
+        authTokenHash: crypto.randomBytes(32).toString("hex"),
+        expiresAt: Date.now() + 3600 * 1000,
+      },
     });
 
     if (!initialized) {

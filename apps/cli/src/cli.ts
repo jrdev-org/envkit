@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { Command } from "commander";
-import { authCmd, logoutCmd, whoamiCmd } from "./commands/auth.js";
-import { initCmd } from "./commands/init.js";
 import {
   deleteCmd,
   getCmd,
@@ -9,10 +6,13 @@ import {
   pushCmd,
   setCmd,
   syncCmd,
-} from "./commands/actions.js";
-import { log } from "./lib/logger.js";
+} from "@cli/commands/actions.js";
 import chalk from "chalk";
+import { Command } from "commander";
+import { authCmd, logoutCmd, whoamiCmd } from "./commands/auth.js";
+import { initCmd } from "./commands/init.js";
 import { linkCmd, shareCmd, unlinkCmd } from "./commands/projects.js";
+import { log } from "./lib/logger.js";
 
 // SIGINT handler
 process.on("SIGINT", () => {
@@ -31,7 +31,7 @@ import { CLI_VERSION } from "./constants.js";
 const program = new Command("envkit")
   .description("Envkit CLI")
   .version(CLI_VERSION)
-  .action(async () => {
+  .action(() => {
     log.info("Welcome to the Envkit CLI!");
     log.info(`Run ${chalk.bold("envkit --help")} to see available commands.`);
     process.exit(0);
