@@ -14,14 +14,6 @@ export const client = new ConvexHttpClient(env.CONVEX_URL);
 const app = new Hono().basePath("/api/v1");
 env.CLIENT_NODE_ENV === "development" && app.use(logger());
 
-const routes = app
-  .route("/projects", projects)
-  .route("/users", users)
-  .route("/tokens", tokens)
-  .route("/teams", teams)
-  .route("/devices", devices)
-  .route("/cli", cli);
-
 // Start the server once
 const server = serve({
   port: Number(env.PORT),
@@ -43,5 +35,5 @@ process.on("SIGTERM", () => {
   });
 });
 
-export type AppType = typeof routes;
 export default app;
+export { cli, projects, users, devices, tokens, teams };
