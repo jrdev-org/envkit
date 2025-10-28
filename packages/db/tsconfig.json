@@ -1,17 +1,16 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "convex/**/*.ts"],
-  "exclude": ["node_modules"],
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
-    "declaration": true,
-    "emitDeclarationOnly": false,
-    "composite": true,
-    "strict": false,
-    "baseUrl": ".",
-    "paths": {
-      "@db/*": ["src/*"]
-    }
-  }
+	"extends": "../../tsconfig.base.json",
+	"include": ["src/**/*.ts", "convex/**/*.ts"],
+	"exclude": ["node_modules"],
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": ".",
+		"declaration": true,
+		"composite": true,
+		"strict": true,
+		"baseUrl": ".",
+		"paths": {
+			"@db/*": ["src/*"]
+		}
+	}
 }

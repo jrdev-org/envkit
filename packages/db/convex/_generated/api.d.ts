@@ -16,6 +16,7 @@ import type {
 import type * as cli from "../cli.js";
 import type * as devices from "../devices.js";
 import type * as helpers from "../helpers.js";
+import type * as keys from "../keys.js";
 import type * as projects from "../projects.js";
 import type * as teams from "../teams.js";
 import type * as tokens from "../tokens.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   cli: typeof cli;
   devices: typeof devices;
   helpers: typeof helpers;
+  keys: typeof keys;
   projects: typeof projects;
   teams: typeof teams;
   tokens: typeof tokens;
