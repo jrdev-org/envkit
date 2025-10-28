@@ -1,44 +1,45 @@
 {
-  "name": "@envkit/cli-old",
-  "version": "0.1.0",
-  "private": true,
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
-  "type": "module",
-  "bin": {
-    "envkit": "dist/src/cli.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "envkit": "tsx src/cli.ts",
-    "build-cli": "tsc -p tsconfig.json"
-  },
-  "exports": {
-    ".": "./dist/src/index.js"
-  },
-  "devDependencies": {
-    "@types/node": "^24.5.2",
-    "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "@envkit/utils": "workspace:*",
-    "@envkit/api": "workspace:*",
-    "@hono/node-server": "^1.19.3",
-    "@inquirer/prompts": "^7.8.6",
-    "@t3-oss/env-core": "^0.13.8",
-    "chalk": "^5.6.2",
-    "clipboardy": "^5.0.0",
-    "commander": "^14.0.1",
-    "detect-port": "^2.1.0",
-    "dotenv": "^17.2.2",
-    "hono": "^4.10.1",
-    "open": "^10.2.0",
-    "ora": "^9.0.0",
-    "trysafely": "^4.0.0",
-    "valibot": "^1.1.0"
-  }
+	"name": "@envkit/cli-old",
+	"version": "0.1.0",
+	"deprecated": true,
+	"private": true,
+	"main": "dist/src/index.js",
+	"types": "dist/src/index.d.ts",
+	"type": "module",
+	"bin": {
+		"envkit": "dist/src/cli.js"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"envkit": "tsx src/cli.ts",
+		"build-cli": "tsc -p tsconfig.json"
+	},
+	"exports": {
+		".": "./dist/src/index.js"
+	},
+	"devDependencies": {
+		"@types/node": "^24.5.2",
+		"tsx": "^4.20.5",
+		"typescript": "^5.9.2"
+	},
+	"dependencies": {
+		"@envkit/utils": "workspace:*",
+		"@envkit/api": "workspace:*",
+		"@hono/node-server": "^1.19.3",
+		"@inquirer/prompts": "^7.8.6",
+		"@t3-oss/env-core": "^0.13.8",
+		"chalk": "^5.6.2",
+		"clipboardy": "^5.0.0",
+		"commander": "^14.0.1",
+		"detect-port": "^2.1.0",
+		"dotenv": "^17.2.2",
+		"hono": "^4.10.1",
+		"open": "^10.2.0",
+		"ora": "^9.0.0",
+		"trysafely": "^4.0.0",
+		"valibot": "^1.1.0"
+	}
 }
