@@ -1,5 +1,5 @@
 {
-  "name": "@envkit/cli",
+  "name": "@envkit/cli-old",
   "version": "0.1.0",
   "private": true,
   "main": "dist/src/index.js",
