@@ -1,0 +1,36 @@
+{
+  "name": "@envkit/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A CLI for envkit, the open-source project management tool",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx src/index.ts"
+  },
+  "bin": {
+    "envkit": "dist/src/cli.js"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.18.2",
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  },
+  "dependencies": {
+    "@envkit/api": "workspace:*",
+    "@envkit/utils": "workspace:*",
+    "@hono/node-server": "^1.19.5",
+    "@inquirer/prompts": "^7.8.6",
+    "chalk": "^5.6.2",
+    "clipboardy": "^5.0.0",
+    "commander": "^14.0.1",
+    "detect-port": "^2.1.0",
+    "hono": "^4.10.1",
+    "open": "^10.2.0",
+    "ora": "^9.0.0"
+  }
+}
