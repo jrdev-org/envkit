@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { env } from "./env.js";
 import cli from "./routes/cli.js";
 import devices from "./routes/devices.js";
+import keys from "./routes/keys.js";
 import projects from "./routes/projects.js";
 import teams from "./routes/teams.js";
 import tokens from "./routes/tokens.js";
@@ -16,24 +17,24 @@ env.CLIENT_NODE_ENV === "development" && app.use(logger());
 
 // Start the server once
 const server = serve({
-  port: Number(env.PORT),
-  fetch: app.fetch,
+	port: Number(env.PORT),
+	fetch: app.fetch,
 });
 
 // graceful shutdown
 process.on("SIGINT", () => {
-  server.close();
-  process.exit(0);
+	server.close();
+	process.exit(0);
 });
 process.on("SIGTERM", () => {
-  server.close((err) => {
-    if (err) {
-      console.error(err);
-      process.exit(1);
-    }
-    process.exit(0);
-  });
+	server.close((err) => {
+		if (err) {
+			console.error(err);
+			process.exit(1);
+		}
+		process.exit(0);
+	});
 });
 
 export default app;
-export { cli, projects, users, devices, tokens, teams };
+export { cli, projects, users, devices, tokens, teams, keys };
